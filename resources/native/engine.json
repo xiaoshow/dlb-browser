@@ -1,0 +1,8 @@
+{
+  "engine": "Fingerprint Chromium",
+  "version": "148.0.7778.215",
+  "executable": "Chromium",
+  "source": "adryfish/fingerprint-chromium C++ kernel (macOS arm64)",
+  "sha256": "b797a751ee6b9f549402e09386847fc57346a8b7b6f9b2b2e20322354eeddf1a",
+  "installRelativePath": "prism-fingerprint-browser/native/Chromium.app"
+}

@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
+import { createServer as tcpServer, connect } from 'node:net'
+import { mkdtemp,rm,mkdir,writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join,resolve } from 'node:path'
+import { NativeBrowsers } from '../dist-electron/native-browser.js'
+const root=await mkdtemp(join(tmpdir(),'prism-isolation-audit-'))
+const hashSource=`const hash=a=>{let h=2166136261;for(const n of a)h=Math.imul(h^n,16777619);return(h>>>0).toString(16)};const draw=c=>{c.width=40;c.height=30;const x=c.getContext('2d');x.fillStyle='rgb(100,130,140)';x.fillRect(0,0,40,30);return hash(x.getImageData(0,0,40,30).data)};`
+const workerSource=hashSource+`onmessage=()=>postMessage({canvas:draw(new OffscreenCanvas(40,30)),memory:navigator.deviceMemory,cores:navigator.hardwareConcurrency,locale:navigator.language,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone})`
+const sockets=new Set()
+const server=createServer((req,res)=>{res.setHeader('content-type',req.url==='/worker.js'?'application/javascript':'text/html');res.end(req.url==='/worker.js'?workerSource:'<!doctype html><script>window.firstRead={timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,locale:navigator.language,cores:navigator.hardwareConcurrency,width:screen.width}</script><title>Local isolation audit</title><body>Test</body>')})
+server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket))})
+await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}`
+// Tiny loopback SOCKS servers prove that changing the selected proxy retains the Profile.
+async function socks(){let requests=0;const server=tcpServer(socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));let buffer=Buffer.alloc(0),stage=0,upstream;socket.on('error',()=>{});socket.on('close',()=>upstream?.destroy());socket.on('data',data=>{if(stage===3){upstream.write(data);return}buffer=Buffer.concat([buffer,data]);if(stage===0&&buffer.length>=2+buffer[1]){buffer=buffer.subarray(2+buffer[1]);socket.write(Buffer.from([5,0]));stage=1}if(stage===1&&buffer.length>=5){const type=buffer[3];const size=type===1?10:type===3?7+buffer[4]:0;if(!size||buffer.length<size)return;const host=type===1?[...buffer.subarray(4,8)].join('.'):buffer.subarray(5,5+buffer[4]).toString();const port=buffer.readUInt16BE(size-2);buffer=buffer.subarray(size);stage=2;requests++;upstream=connect(port,host,()=>{socket.write(Buffer.from([5,0,0,1,127,0,0,1,0,0]));stage=3;if(buffer.length){upstream.write(buffer);buffer=Buffer.alloc(0)}});upstream.on('data',d=>socket.write(d));upstream.on('end',()=>socket.end());upstream.on('error',()=>socket.destroy())}})});await new Promise(r=>server.listen(0,'127.0.0.1',r));return{server,rules:`socks5://127.0.0.1:${server.address().port}`,count:()=>requests}}
+const proxyA=await socks(),proxyB=await socks()
+const manager=new NativeBrowsers(root,resolve('resources'),()=>{},()=>{})
+const profiles=[['a','Asia/Tokyo','ja-JP',4,1280],['b','America/New_York','en-US',8,1440],['c','Europe/Berlin','de-DE',12,1920]].map(([id,timezone,locale,hardwareConcurrency,width])=>({id,name:id,timezone,locale,hardwareConcurrency,resolution:{width,height:900},userAgentMode:'real',webRTCPolicy:'proxy-only',fingerprint:{seed:`stable-profile-${id}`,canvas:'noise',audio:'noise',webGL:'noise'}}))
+async function page(id,target=url){const pipe=manager.connection(id),list=(await pipe.send('Target.getTargets')).targetInfos,p=list.find(t=>t.type==='page'),sid=pipe.sessions.get(p.targetId);await pipe.send('Page.navigate',{url:target},sid);for(let i=0;i<100;i++){const r=await pipe.send('Runtime.evaluate',{expression:'document.readyState+"|"+location.href',returnByValue:true},sid);if(r.result.value==='complete|'+target)break;await new Promise(r=>setTimeout(r,25))}return{pipe,sid}}
+async function read(id){const{pipe,sid}=await page(id);const expression=`(async()=>{${hashSource}const canvas=draw(document.createElement('canvas'));const offscreen=draw(new OffscreenCanvas(40,30));const context=new OfflineAudioContext(1,44100,44100);const oscillator=context.createOscillator();oscillator.type='triangle';oscillator.frequency.value=10000;const compressor=context.createDynamicsCompressor();oscillator.connect(compressor);compressor.connect(context.destination);oscillator.start();const audio=await context.startRendering();const data=audio.getChannelData(0);const audioHash=hash(new Uint8Array(data.buffer));const worker=await new Promise((resolve,reject)=>{const w=new Worker('/worker.js');const timer=setTimeout(()=>{w.terminate();reject(Error('worker timeout'))},4000);w.onmessage=e=>{clearTimeout(timer);w.terminate();resolve(e.data)};w.postMessage({})});return{firstRead:window.firstRead,canvas,offscreen,audio:audioHash,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,locale:navigator.language,cores:navigator.hardwareConcurrency,memory:navigator.deviceMemory,width:screen.width,cookie:document.cookie,localStorage:localStorage.getItem('account'),worker}})()`;const r=await pipe.send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true},sid);if(r.exceptionDetails)throw Error(r.exceptionDetails.text);return r.result.value}
+const report={createdAt:new Date().toISOString(),profiles:{},checks:{},limitations:{}}
+try{
+ await Promise.all(profiles.map((p,i)=>manager.open(p,i+1,p.id==='a'?proxyA.rules:'direct',{kind:p.id==='a'?'socks5':'direct'},undefined,true)))
+ for(const p of profiles){report.profiles[p.id]=await read(p.id);const r=report.profiles[p.id];assert.equal(r.timezone,p.timezone);assert.equal(r.locale,p.locale);assert.equal(r.cores,p.hardwareConcurrency);assert.equal(r.width,p.resolution.width);assert.deepEqual(r.firstRead,{timezone:p.timezone,locale:p.locale,cores:p.hardwareConcurrency,width:p.resolution.width});assert.equal(r.localStorage,null);assert.equal(r.cookie,'')}
+ const beforeCookieSessions=manager.connection('a').sessions.size
+ for(let i=0;i<5;i++) {
+   await manager.importCookies('a',[{name:'resource-audit',value:String(i),domain:'example.test',path:'/',secure:true}])
+   assert.equal((await manager.exportCookies('a')).find(c=>c.name==='resource-audit')?.value,String(i))
+ }
+ assert.equal(manager.connection('a').sessions.size,beforeCookieSessions)
+ assert.ok(!(await manager.exportCookies('b')).some(c=>c.name==='resource-audit'))
+ report.checks.cookieOperationsDoNotAllocateSessions=true
+ report.checks.concurrentSettingsSeparate=true
+ assert.equal(new Set(Object.values(report.profiles).map(r=>r.canvas)).size,3);report.checks.pageCanvasDifferent=true;report.limitations.audioCollisionAcrossProfiles=new Set(Object.values(report.profiles).map(r=>r.audio)).size!==profiles.length
+ const a=await page('a');await a.pipe.send('Runtime.evaluate',{expression:`localStorage.setItem('account','A');document.cookie='account=A; max-age=86400'`},a.sid)
+ const again=await read('a');assert.equal(again.canvas,report.profiles.a.canvas);assert.equal(again.audio,report.profiles.a.audio);assert.equal((await read('b')).localStorage,null);assert.equal((await read('c')).cookie,'');report.checks.storageSeparated=true;report.checks.reloadStable=true
+ await manager.close('a');await manager.open(profiles[0],1,proxyB.rules,{kind:'socks5'},undefined,true);const reopened=await read('a');assert.equal(reopened.canvas,report.profiles.a.canvas);assert.equal(reopened.audio,report.profiles.a.audio);assert.equal(reopened.cookie,'account=A');assert.equal(reopened.localStorage,'A');assert.ok(proxyA.count()>0&&proxyB.count()>0);report.checks.reopenAndProxyChangeStable=true
+ assert.equal((await read('b')).canvas,report.profiles.b.canvas);report.checks.otherRunningProfileUnchanged=true
+ const bp=manager.connection('b');const nt=await bp.send('Target.createTarget',{url:'chrome://newtab/'});for(let i=0;i<50&&!bp.sessions.has(nt.targetId);i++)await new Promise(r=>setTimeout(r,20));const ns=bp.sessions.get(nt.targetId);await bp.send('Page.navigate',{url},ns);await new Promise(r=>setTimeout(r,200));const newtab=await bp.send('Runtime.evaluate',{expression:`(()=>{${hashSource}return draw(document.createElement('canvas'))})()`,returnByValue:true},ns);report.checks.newTabRetainsSameCanvas=newtab.result.value===report.profiles.b.canvas;assert.equal(report.checks.newTabRetainsSameCanvas,true);await bp.send('Target.closeTarget',{targetId:nt.targetId})
+ report.limitations.workerCanvasIdenticalAcrossProfiles=new Set(Object.values(report.profiles).map(r=>r.worker.canvas)).size===1
+ report.limitations.offscreenCanvasIdenticalAcrossProfiles=new Set(Object.values(report.profiles).map(r=>r.offscreen)).size===1
+ report.limitations.pageWorkerMemoryMismatch=Object.values(report.profiles).some(r=>r.memory!==r.worker.memory)
+ report.limitations.pageWorkerCoreMismatch=Object.values(report.profiles).some(r=>r.cores!==r.worker.cores)
+ console.log('PASS native concurrent Profile config/storage isolation and page Canvas/Audio stability across reopen and proxy change (distinct audio checked separately in limitations)')
+ console.log('Remaining actual fingerprint limitations:',report.limitations)
+ await mkdir('release/audit',{recursive:true});await writeFile('release/audit/native-profile-isolation.json',JSON.stringify(report,null,2)+'\n')
+}catch(error){console.error("AUDIT failure:",error);throw error}finally{await manager.closeAll();for(const socket of sockets)socket.destroy();await Promise.all([server,proxyA.server,proxyB.server].map(s=>new Promise(r=>s.close(r))));await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:200})}

@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Prism 指纹浏览器 远程</title>
+<style>
+:root{--bg:#f6f6f8;--card:#fff;--text:#1b1b1f;--sub:#7a7a85;--line:#e6e6ea;--me:#0a84ff;--meText:#fff;--muse:#fff;--warn:#ff9f0a;--accent:#0a84ff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f0f12;--card:#1c1c21;--text:#f2f2f5;--sub:#9a9aa5;--line:#2c2c33;--me:#0a84ff;--meText:#fff;--muse:#24242a}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:16px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+#app{height:100%;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{border:0;background:none;color:var(--accent);font-size:16px;padding:4px 2px}
+.list{flex:1;overflow:auto;padding:10px 12px calc(env(safe-area-inset-bottom) + 10px)}
+.sec{font-size:13px;color:var(--sub);margin:12px 4px 6px}
+.item{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:14px;padding:12px;margin-bottom:8px;border:0;width:100%;text-align:left;color:inherit;font:inherit}
+.av{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:600;overflow:hidden;background-size:cover;background-position:center}
+.item .t{flex:1;min-width:0}.item strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item small{color:var(--sub);font-size:13px}
+.item.logged-out{background:var(--line);color:var(--sub)}.item.logged-out .av{filter:grayscale(1);opacity:.5}.login-mark{font-size:12px;font-weight:500;color:var(--sub);margin-left:6px}
+.badge{background:var(--warn);color:#fff;border-radius:10px;font-size:12px;padding:2px 8px;flex:none}
+.dot{width:8px;height:8px;border-radius:50%;background:#34c759;flex:none}
+.msgs{flex:1;overflow:auto;padding:12px 12px 6px;display:flex;flex-direction:column;gap:10px}
+.m{max-width:86%;padding:9px 12px;border-radius:16px;white-space:pre-wrap;word-break:break-word;font-size:15.5px}
+.m.me{align-self:flex-end;background:var(--me);color:var(--meText);border-bottom-right-radius:5px}
+.m.muse{align-self:flex-start;background:var(--muse);border-bottom-left-radius:5px;border:1px solid var(--line)}
+.m img,.m video{display:block;max-width:100%;border-radius:10px;margin-top:6px}
+.m .vid{display:block;margin-top:6px;border:1px solid var(--line);background:var(--card);color:var(--accent);border-radius:10px;padding:18px 12px;width:220px;font-size:15px}
+.m .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.m .btns button,.bar button{border:1px solid var(--line);background:var(--card);color:var(--accent);border-radius:14px;padding:5px 11px;font-size:14px}
+.bar{display:none;align-items:center;gap:8px;padding:8px 12px;background:#fff4e0;color:#8a5300;font-size:14px}
+@media (prefers-color-scheme:dark){.bar{background:#3a2a10;color:#ffcf80}}
+.bar span{flex:1}
+.compose{display:flex;gap:8px;align-items:flex-end;padding:8px 10px calc(env(safe-area-inset-bottom) + 8px);background:var(--card);border-top:1px solid var(--line)}
+textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:18px;padding:9px 14px;font:16px/1.35 inherit;background:var(--bg);color:var(--text);max-height:40vh;outline:none}
+.send{border:0;background:var(--accent);color:#fff;border-radius:18px;height:38px;padding:0 16px;font-size:16px;font-weight:600}
+.send:disabled{opacity:.4}
+.hint{color:var(--sub);text-align:center;font-size:13px;padding:6px}
+.err{color:#ff453a}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $ = (s, el = document) => el.querySelector(s)
+const app = $('#app')
+let current = null, timer = null, lastSig = '', sending = false
+const refreshing = new Set()
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {})
+  const j = await r.json().catch(() => ({ error: 'HTTP ' + r.status }))
+  if (!r.ok || j.error) throw new Error(j.error || 'HTTP ' + r.status)
+  return j
+}
+const op = (o, args) => api('/api/op', { profileId: current.id, op: o, args }).then((j) => j.result)
+const avatar = (p) => p.avatar ? `<div class="av" style="background-image:url('${esc(p.avatar)}')"></div>` : `<div class="av" style="background:${esc(p.color || '#888')}">${esc((p.name || '?').slice(0, 1))}</div>`
+const usageText = (u) => {
+  if (!u || !Number.isFinite(u.percentUsed)) return '用量尚未读取'
+  const reset = u.resetsAt > 0 ? new Intl.DateTimeFormat('zh-CN', { month:'numeric', day:'numeric', timeZone:'Asia/Shanghai' }).format(new Date(u.resetsAt * 1000)) + ' 重置' : ''
+  const extra = (u.topupRowValueLabel || '').match(/(\d+(?:\.\d+)?)%\s+used\s+\(([^)]+?)\s+tokens?\s+left\)/i)
+  return [`Muse ${u.percentUsed}%`, reset, extra ? `${extra[2]}剩余 · 额外已用${extra[1]}%` : '', u.at ? '更新 ' + new Date(u.at).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'}) : ''].filter(Boolean).join(' · ')
+}
+const pendingText = (p) => !p ? '' : (p.kind === 'connect' ? '等你连接' : '待授权')
+
+async function showList() {
+  clearInterval(timer); current = null; history.replaceState(null, '', '#')
+  app.innerHTML = `<header><h1>Prism 指纹浏览器 · Muse</h1><button id="rf">刷新</button></header><div class="list" id="list"><p class="hint">读取中…</p></div>`
+  $('#rf').onclick = showList
+  try {
+    const { profiles } = await api('/api/profiles')
+    profiles.sort((a, b) => (b.pinned - a.pinned) || String(b.lastOpenedAt || '').localeCompare(String(a.lastOpenedAt || '')))
+    const row = (p) => `<button class="item ${p.loginRequired ? 'logged-out' : ''}" data-id="${esc(p.id)}">${avatar(p)}<div class="t"><strong>${esc(p.name)}${p.loginRequired ? '<span class="login-mark">⚿ 需登录</span>' : ''}</strong><small>${esc(usageText(p.usage) || (p.loaded ? '已打开' : '未打开'))}</small></div>${p.pending ? `<span class="badge">${pendingText(p.pending)}</span>` : (p.loaded ? '<span class="dot"></span>' : '')}</button>`
+    const pinned = profiles.filter((p) => p.pinned), rest = profiles.filter((p) => !p.pinned)
+    $('#list').innerHTML = (pinned.length ? '<div class="sec">常驻</div>' + pinned.map(row).join('') : '') + (rest.length ? '<div class="sec">其他</div>' + rest.map(row).join('') : '')
+    for (const b of app.querySelectorAll('.item')) b.onclick = () => openChat(profiles.find((p) => p.id === b.dataset.id))
+  } catch (e) { $('#list').innerHTML = `<p class="hint err">${esc(e.message)}</p>` }
+}
+
+function openChat(p) {
+  current = p; lastSig = ''; history.replaceState(null, '', '#' + p.id)
+  try { localStorage.setItem('orbit-last', p.id) } catch {}
+  app.innerHTML = `<header><button id="back">‹ 标签</button><h1>${esc(p.name)}</h1><button id="rf">刷新</button></header>
+    <div id="usage" class="hint">${esc(usageText(p.usage))}</div>
+    <div class="bar" id="bar"><span id="barText"></span><button id="once">同意一次</button><button id="always">总是允许</button></div>
+    <div class="msgs" id="msgs"><p class="hint">打开中…（没打开过的号要十几秒）</p></div>
+    <div class="compose"><textarea id="tx" rows="1" placeholder="给 ${esc(p.name)} 发消息"></textarea><button class="send" id="send">发送</button></div>`
+  $('#back').onclick = showList
+  $('#rf').onclick = () => refresh(true)
+  const tx = $('#tx')
+  tx.oninput = () => { tx.style.height = 'auto'; tx.style.height = tx.scrollHeight + 'px' }
+  $('#send').onclick = send
+  $('#once').onclick = () => op('approve', { mode: 'once' }).then(() => refresh(true))
+  $('#always').onclick = () => op('approve', { mode: 'always' }).then(() => refresh(true))
+  refresh(true)
+  clearInterval(timer); timer = setInterval(() => refresh(false), 3000)
+}
+
+// Muse 的图片/视频是 blob: 地址，手机拿不到：经 Prism 指纹浏览器 从页面里取出来（图片自动，视频点了才取）
+const mediaCache = new Map()
+const mediaHtml = (x) => {
+  const cached = mediaCache.get(current.id + ':' + x.src)
+  if (x.type === 'image') return `<img data-src="${esc(x.src)}" ${cached ? `src="${cached}"` : ''} alt="图片加载中…">`
+  return cached ? `<video src="${cached}" controls playsinline></video>` : `<button class="vid" data-src="${esc(x.src)}">▶ 加载视频</button>`
+}
+async function fetchMedia(src) {
+  const key = current.id + ':' + src
+  if (mediaCache.has(key)) return mediaCache.get(key)
+  const r = await op('media', { src })
+  if (!r || !r.ok) throw new Error((r && r.error) || '取不到')
+  const blob = await (await fetch(r.dataUrl)).blob()
+  const url = URL.createObjectURL(blob)
+  mediaCache.set(key, url)
+  return url
+}
+function wireMedia(box) {
+  for (const img of box.querySelectorAll('img[data-src]:not([src])')) fetchMedia(img.dataset.src).then((u) => { img.src = u }).catch(() => { img.alt = '图片取不到' })
+  for (const b of box.querySelectorAll('button.vid')) b.onclick = async () => {
+    b.disabled = true; b.textContent = '加载中…'
+    try { const u = await fetchMedia(b.dataset.src); const v = document.createElement('video'); v.src = u; v.controls = true; v.playsInline = true; b.replaceWith(v); v.play().catch(() => {}) }
+    catch (e) { b.disabled = false; b.textContent = '▶ 重试（' + e.message + '）' }
+  }
+}
+
+async function refresh(force) {
+  if (!current) return
+  const id = current.id
+  if (refreshing.has(id)) return
+  refreshing.add(id)
+  try {
+    const [data, list] = await Promise.all([op('read', { limit: 40 }), api('/api/profiles')])
+    if (!current || current.id !== id) return
+    const me = list.profiles.find((x) => x.id === id)
+    if (me) { $('#usage').textContent = (me.loginRequired ? '⚿ 需重新登录 · 上次记录：' : '') + usageText(me.usage); $('#usage').style.opacity = me.loginRequired ? '.65' : '1'; }
+    const bar = $('#bar')
+    if (me && me.pending) {
+      bar.style.display = 'flex'
+      $('#barText').textContent = me.pending.kind === 'connect' ? `等你连接：${me.pending.heading || ''}` : `待授权：${me.pending.heading || ''}`
+      $('#always').style.display = me.pending.always ? '' : 'none'
+      $('#once').textContent = me.pending.kind === 'connect' ? '去连接' : '同意一次'
+    } else bar.style.display = 'none'
+    const msgs = data.messages || []
+    const sig = JSON.stringify(msgs.map((m) => [m.role, m.text.length, m.media.length, m.buttons.length]))
+    if (!force && sig === lastSig) return
+    // Do not replace a playing video on the three-second message poll.
+    if (!force && [...$('#msgs').querySelectorAll('video')].some((v) => !v.paused && !v.ended)) return
+    lastSig = sig
+    const box = $('#msgs')
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120
+    box.innerHTML = msgs.length ? msgs.map((m) => `<div class="m ${m.role}">${esc(m.text)}${m.media.map((x) => mediaHtml(x)).join('')}${m.role === 'muse' && m.buttons.length ? `<div class="btns">${m.buttons.slice(0, 6).map((b) => `<button data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}</div>`).join('') : `<p class="hint">没读到对话${data.note ? '（' + esc(data.note) + '）' : ''}</p>`
+    wireMedia(box)
+    for (const b of box.querySelectorAll('[data-b]')) b.onclick = () => op('click', { label: b.dataset.b }).then(() => setTimeout(() => refresh(true), 800))
+    if (force || nearBottom) box.scrollTop = box.scrollHeight
+  } catch (e) {
+    if (force && current?.id === id) $('#msgs').innerHTML = `<p class="hint err">${esc(e.message)}</p>`
+  } finally {
+    refreshing.delete(id)
+  }
+}
+
+async function send() {
+  const tx = $('#tx'), text = tx.value.trim()
+  if (!text || sending) return
+  sending = true; $('#send').disabled = true
+  try {
+    const r = await op('send', { text })
+    if (r && r.ok === false) throw new Error(r.error)
+    tx.value = ''; tx.style.height = 'auto'
+    setTimeout(() => refresh(true), 600)
+  } catch (e) { alert('没发出去：' + e.message) }
+  finally { sending = false; $('#send').disabled = false }
+}
+
+window.addEventListener('visibilitychange', () => { if (!document.hidden && current) refresh(true) })
+const start = location.hash.slice(1)
+if (start) api('/api/profiles').then(({ profiles }) => { const p = profiles.find((x) => x.id === start); p ? openChat(p) : showList() }).catch(showList)
+else showList()
+</script>
+</body>
+</html>

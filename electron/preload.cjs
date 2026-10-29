@@ -1,0 +1,22 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('profileBrowser', {
+  scanV2ray: () => ipcRenderer.invoke('v2ray:scan'),
+  syncV2ray: (selected) => ipcRenderer.invoke('v2ray:sync', selected),
+  getUpdateStatus: (check = false) => ipcRenderer.invoke('updates:status', check),
+  setPresentationMode: (mode) => ipcRenderer.invoke('workspace:mode', mode),
+  getRunningProfiles: () => ipcRenderer.invoke('profile:runtime'),
+  onProfileRuntime: (callback) => { const listener = (_event, ids) => callback(ids); ipcRenderer.on('profile:runtime', listener); return () => ipcRenderer.removeListener('profile:runtime', listener) },
+  loadState: () => ipcRenderer.invoke('state:load'),
+  onAccountNote: (callback) => { const listener = (_event, profileId, note) => callback(profileId, note); ipcRenderer.on('profile:account-note', listener); return () => ipcRenderer.removeListener('profile:account-note', listener) },
+  saveState: (state) => ipcRenderer.invoke('state:save', state),
+  openProfile: (profile, proxy) => ipcRenderer.invoke('profile:open', profile, proxy),
+  closeProfile: (profileId) => ipcRenderer.invoke('profile:close', profileId),
+  deleteProfiles: (profileIds) => ipcRenderer.invoke('profile:delete', profileIds),
+  exportCookies: (profileId) => ipcRenderer.invoke('profile:cookies-export', profileId),
+  importCookies: (profileId, cookies) => ipcRenderer.invoke('profile:cookies-import', profileId, cookies),
+  parseVless: (url) => ipcRenderer.invoke('proxy:parse-vless', url),
+  testProxy: (proxy) => ipcRenderer.invoke('proxy:test', proxy),
+  onNewTab: (callback) => { const listener = () => callback(); ipcRenderer.on('shortcut:new-tab', listener); return () => ipcRenderer.removeListener('shortcut:new-tab', listener) },
+  onCloseTab: (callback) => { const listener = () => callback(); ipcRenderer.on('shortcut:close-tab', listener); return () => ipcRenderer.removeListener('shortcut:close-tab', listener) },
+})

@@ -1,0 +1,98 @@
+{
+  "name": "prism-fingerprint-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prism fingerprint browser with stable per-profile fingerprints, isolated sessions and VLESS proxies.",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on tcp:5173 file:dist-electron/main.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "build": "node scripts/check-preload-bridge.mjs && tsc -p tsconfig.electron.json && vite build",
+    "package:mac": "pnpm run build && electron-builder --mac dir --arm64",
+    "test:environment": "pnpm run build && electron tests/environment-smoke.cjs && electron tests/editor-smoke.cjs && electron tests/presentation-smoke.cjs && node tests/vless-smoke.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "start": "electron .",
+    "test:network": "pnpm run build && node tests/ip-environment.mjs && node tests/vless-smoke.mjs && node tests/vless-tunnel.mjs",
+    "test:native": "pnpm run build && node tests/native-smoke.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "@types/node": "26.6.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "concurrently": "10.0.5",
+    "cross-env": "10.1.0",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "lucide-react": "1.52.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.2",
+    "wait-on": "9.5.1"
+  },
+  "build": {
+    "appId": "com.xiaoshow.prism",
+    "productName": "DLB Browser",
+    "executableName": "Prism",
+    "electronDist": "node_modules/electron/dist",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "release-prism"
+    },
+    "files": [
+      "dist/index.html",
+      "dist/assets/**/*",
+      "dist-electron/main.js",
+      "dist-electron/vless.js",
+      "dist-electron/xray.js",
+      "dist-electron/ip-environment.js",
+      "dist-electron/fingerprint.js",
+      "electron/preload.cjs",
+      "package.json",
+      "!node_modules/**/*",
+      "dist-electron/native-browser.js",
+      "dist-electron/native-home.js",
+      "dist-electron/chrome-pipe.js",
+      "dist-electron/profile-numbers.js",
+      "dist-electron/update-center.js",
+      "dist-electron/v2ray-sync.js"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/bin/xray",
+        "to": "bin/xray"
+      },
+      {
+        "from": "resources/licenses",
+        "to": "licenses"
+      },
+      {
+        "from": "resources/native/engine.json",
+        "to": "native/engine.json"
+      },
+      {
+        "from": "resources/native/prism-dock.png",
+        "to": "native/prism-dock.png"
+      },
+      {
+        "from": "resources/native/prism-icon",
+        "to": "native/prism-icon"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "resources/prism.icns",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    }
+  }
+}
