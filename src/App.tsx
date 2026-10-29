@@ -208,7 +208,7 @@ function App() {
   return <div className="orbit-window prism-management">
     <><div className="management-titlebar"><span>Prism 指纹浏览器</span><span>独立窗口工作空间</span></div><aside className="management-sidebar"><div className="prism-brand"><img src={orbitLogo} alt="Prism Logo"/><div><strong>Prism</strong><small>指纹浏览器 · Preview</small></div></div><button className="primary sidebar-create" onClick={() => setNewProfileModal(true)}><Plus size={19}/>新建浏览器环境</button><div className="navigation-caption">工作空间</div><nav><button className="active"><Globe2/>浏览器环境<span>{state.profiles.length}</span></button><button onClick={() => setProxyPanel(true)}><Network/>代理管理</button><button onClick={() => setV2raySyncOpen(true)}><Star/>v2rayN 收藏同步</button></nav><div className="navigation-caption">应用</div><nav><button onClick={() => setUpdateCenterOpen(true)}><RefreshCw/>更新中心</button></nav><div className="sidebar-bottom"><span><i className="live-dot"/>{runtimeIds.length} 个环境运行中</span><small>Fingerprint Chromium 148 内核</small><div>Prism Preview <span>本地工作空间</span></div></div></aside></>
 
-    {<ProfileManager state={state} running={runtimeIds} onOpen={openProfile} onStop={stopWindowProfile} onEdit={setEditing} onUpdateAlias={(id, alias) => {
+    {<ProfileManager onOrganize={updateState} state={state} running={runtimeIds} onOpen={openProfile} onStop={stopWindowProfile} onEdit={setEditing} onUpdateAlias={(id, alias) => {
       const current = stateRef.current
       updateState({ ...current, profiles: current.profiles.map(p => p.id === id ? { ...p, alias: alias || undefined } : p) })
       setToast(alias ? `标签：${alias}` : '已清空标签')

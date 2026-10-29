@@ -1,6 +1,6 @@
 import { timezoneLabel } from './timezones'
 import { useState } from 'react'
-import { Search, Play, Square, Fingerprint, Globe2, Settings2, Monitor, Network, RefreshCw, MapPin, Cpu, Link2, ArrowLeftRight, Trash2, Download, Upload, Cookie } from 'lucide-react'
+import { Search, Play, Square, Fingerprint, Globe2, Settings2, Monitor, Network, RefreshCw, MapPin, Cpu, Link2, ArrowLeftRight, Trash2, Download, Upload, Cookie, Folder, ChevronRight, ChevronDown } from 'lucide-react'
 import type { AppState, BrowserProfile, ProxyTestResult } from './types'
 import { resolveProfileAvatar } from './notion-avatars'
 
@@ -43,6 +43,7 @@ function TagCell({ profile, allTags, onChange, onReceive }: { profile: BrowserPr
 
 type Props = {
   state: AppState
+  onOrganize: (state: AppState) => void
   running: string[]
   onOpen: (p: BrowserProfile) => Promise<void>
   onStop: (id: string) => Promise<void>
@@ -60,13 +61,16 @@ type Props = {
   onImportProfiles: () => void
 }
 
-export function ProfileManager({ state, running, onOpen, onStop, onEdit, onUpdateAlias, onNew, onProxies, onProtect, onDelete, onCookieModal, onExportProfiles, onImportProfiles }: Props) {
+export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onEdit, onUpdateAlias, onNew, onProxies, onProtect, onDelete, onCookieModal, onExportProfiles, onImportProfiles }: Props) {
+  const [folderName, setFolderName] = useState('')
+  const [newFolder, setNewFolder] = useState(false)
+  const [moveTo, setMoveTo] = useState('')
   const [query, setQuery] = useState(''), [group, setGroup] = useState('')
   const [busy, setBusy] = useState<string[]>([]), [selected, setSelected] = useState<string[]>([])
   const [tests, setTests] = useState<Record<string, ProxyTestResult | 'testing'>>({})
   const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[] | null>(null)
   const allTags = [...new Set(state.profiles.flatMap(p => splitTags(p.alias)))]
-  const profiles = state.profiles.filter(p => (!group || p.groupId === group) && `${p.name} ${p.alias ?? ''} ${p.notes ?? ''}`.toLowerCase().includes(query.toLowerCase()))
+  const profiles = state.profiles.filter(p => (group ? p.groupId === group : (query.trim() || !state.groups.find(g => g.id === p.groupId)?.collapsed)) && `${p.name} ${p.alias ?? ''} ${p.notes ?? ''}`.toLowerCase().includes(query.toLowerCase()))
   async function operate(p: BrowserProfile, stop = false) { setBusy(ids => [...ids,p.id]); try { if(stop) await onStop(p.id);else await onOpen(p) } finally {setBusy(ids => ids.filter(id=>id!==p.id))} }
   async function batch(stop:boolean) { for(const p of state.profiles.filter(p=>selected.includes(p.id))) await operate(p,stop) }
   async function test(id:string) { const proxy=state.proxies.find(p=>p.id===id);if(!proxy || tests[id]==='testing')return;setTests(v=>({...v,[id]:'testing'}));try{const result=await window.profileBrowser!.testProxy(proxy);setTests(v=>({...v,[id]:result}))}catch{setTests(v=>({...v,[id]:{ok:false,error:'检测失败，请重试'}}))} }
@@ -87,12 +91,23 @@ export function ProfileManager({ state, running, onOpen, onStop, onEdit, onUpdat
       <button className="secondary" onClick={onProxies}><Network size={16}/>管理代理</button>
       <button className="primary" onClick={onNew}>＋ 新建 Profile</button>
     </header>
-    <div className="manager-search"><select aria-label="按分组筛选" value={group} onChange={e=>setGroup(e.target.value)}><option value="">全部分组</option>{state.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select><label><Search size={19}/><input aria-label="搜索 Profile" placeholder="搜索环境名称、别名或备注" value={query} onChange={e=>setQuery(e.target.value)}/></label><span className="mode-label"><Monitor size={16}/>Chrome 独立窗口</span></div>
+    <section className="profile-folders" aria-label="Profile 文件夹">
+      <button className={`secondary ${!group ? 'active' : ''}`} onClick={() => {setGroup('');setSelected([])}}>全部环境</button>
+      {state.groups.map(folder => <span className="folder-entry" key={folder.id}>
+        <button className="icon-button" aria-label={`${folder.collapsed ? '展开' : '折叠'} ${folder.name}`} onClick={() => {onOrganize({...state,groups:state.groups.map(g => g.id===folder.id ? {...g,collapsed:!g.collapsed}:g)});setSelected([]);if(group===folder.id)setGroup('')}}>{folder.collapsed ? <ChevronRight size={15}/> : <ChevronDown size={15}/>}</button>
+        <button className={`secondary ${group===folder.id?'active':''}`} onClick={() => {setGroup(folder.id);setSelected([])}}><Folder size={16}/>{folder.name}<small>{state.profiles.filter(p=>p.groupId===folder.id).length}</small></button>
+      </span>)}
+      <button className="secondary" onClick={() => setNewFolder(true)}>＋ 新建文件夹</button>
+      {newFolder && <form onSubmit={e=>{e.preventDefault();const name=folderName.trim();if(!name)return;onOrganize({...state,groups:[...state.groups,{id:crypto.randomUUID(),name,color:'#64748b',collapsed:true}]});setFolderName('');setNewFolder(false)}}><input aria-label="文件夹名称" autoFocus placeholder="例如：偶尔使用" maxLength={40} value={folderName} onChange={e=>setFolderName(e.target.value)}/><button className="secondary" disabled={!folderName.trim()}>创建</button><button type="button" className="secondary" onClick={()=>setNewFolder(false)}>取消</button></form>}
+      <small>折叠的文件夹在全部列表中隐藏；点击文件夹或搜索即可查看，不会自动启动。</small>
+    </section>
+    <div className="manager-search"><select aria-label="按文件夹筛选" value={group} onChange={e=>{setGroup(e.target.value);setSelected([])}}><option value="">全部文件夹</option>{state.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select><label><Search size={19}/><input aria-label="搜索 Profile" placeholder="搜索环境名称、别名或备注" value={query} onChange={e=>{setQuery(e.target.value);setSelected([])}}/></label><span className="mode-label"><Monitor size={16}/>Chrome 独立窗口</span></div>
     <div className="manager-actions">
       <button className="primary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(false)}><Play size={16}/>启动所选</button>
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(true)}><Square size={16}/>停止</button>
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>onProtect(selected)}><Fingerprint size={17}/>启用固定保护</button>
       <button className="secondary danger-btn" disabled={!selected.length||!!busy.length} onClick={()=>setConfirmDeleteIds(selected)}><Trash2 size={15}/>删除所选{selected.length ? ` (${selected.length})` : ''}</button>
+      <select aria-label="移动所选到文件夹" disabled={!selected.length} value={moveTo} onChange={e=>{const id=e.target.value;if(!id)return;onOrganize({...state,profiles:state.profiles.map(p=>selected.includes(p.id)?{...p,groupId:id}:p)});setSelected([]);setMoveTo('')}}><option value="">移动所选到文件夹…</option>{state.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select>
       <span/>
       <small><i className="live-dot"/>{running.length} 个运行中</small>
     </div>

@@ -38,3 +38,5 @@ credentials*
 muse-request-template.json
 muse-subscription-action.json
 xray/*.json
+
+/node_modules

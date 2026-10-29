@@ -12,6 +12,7 @@ Sanitized demo: profile names, tags and proxy endpoints are fictional. Image edi
 
 ### Features
 
+- Profile folders: create collapsed folders for occasional accounts and move selected profiles without changing their sessions or fingerprint seeds.
 - Separate browser processes and persistent data directories for cookies, local storage, bookmarks and extensions.
 - Native Chromium windows sharing one engine installation, without reusing personal Chrome profiles.
 - Per-profile direct, system proxy, SOCKS5 and Xray-backed VLESS connections.

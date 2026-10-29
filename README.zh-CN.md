@@ -12,6 +12,7 @@
 
 ### 功能
 
+- Profile 文件夹：新建可折叠文件夹收纳不常用账号，批量移动环境，不改变登录态或指纹种子。
 - 每个 Profile 使用独立浏览器进程和数据目录，分别保存 Cookie、LocalStorage、书签和扩展。
 - 原生 Chromium 窗口，共用内核文件，不借用日常 Chrome 的个人数据。
 - 独立直连、系统代理、SOCKS5 和 Xray VLESS 网络配置。

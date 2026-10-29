@@ -671,3 +671,5 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   color: #94a3b8;
   font-size: 12px;
 }
+
+.profile-folders{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}.folder-entry{display:inline-flex;align-items:center;gap:2px}.profile-folders .active{background:#e5edff;color:#2563eb}.profile-folders small{color:#8b97ad}.profile-folders>small{flex-basis:100%;font-size:12px}.profile-folders form{display:flex;gap:6px}.profile-folders input{padding:8px;border:1px solid #d8dfec;border-radius:8px}.manager-actions select{max-width:210px;padding:9px;border:1px solid #d8dfec;border-radius:8px}
