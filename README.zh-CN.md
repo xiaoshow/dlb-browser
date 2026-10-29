@@ -5,6 +5,11 @@
 面向 macOS Apple Silicon 的本地多环境 Chromium 浏览器，原内部名称为 Prism。
 
 
+![DLB Browser demo](docs/images/demo.png)
+
+脱敏演示图：账号名称、标签和代理地址均为虚构示例，图片经过编辑。
+
+
 ### 功能
 
 - 每个 Profile 使用独立浏览器进程和数据目录，分别保存 Cookie、LocalStorage、书签和扩展。

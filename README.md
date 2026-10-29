@@ -5,6 +5,11 @@
 Local-first multi-profile Chromium workspace for macOS Apple Silicon. Previously developed as Prism.
 
 
+![DLB Browser demo](docs/images/demo.png)
+
+Sanitized demo: profile names, tags and proxy endpoints are fictional. Image edited for illustration.
+
+
 ### Features
 
 - Separate browser processes and persistent data directories for cookies, local storage, bookmarks and extensions.
