@@ -341,7 +341,7 @@ async function openProfileOnce(profile: any, proxy: any) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    title: 'Prism 指纹浏览器',
+    title: 'DLB Browser 指纹浏览器',
     width: 1440,
     height: 900,
     minWidth: 1060,
@@ -370,7 +370,7 @@ function createWindow() {
 function installMenu() {
   const send = (channel: string, ...args: unknown[]) => mainWindow?.webContents.send(channel, ...args)
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'Prism 指纹浏览器', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
+    { label: 'DLB Browser', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
     { label: '文件', submenu: [
       { label: '新建 Profile', accelerator: 'CommandOrControl+T', click: () => send('shortcut:new-tab') },
       { type: 'separator' }, { role: 'close' },
