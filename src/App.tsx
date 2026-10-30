@@ -9,7 +9,7 @@ import { FingerprintSettings } from './FingerprintSettings'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Cloud, Dices, Globe2, Network, Pause, Pencil, Pin, PinOff, Play, Plus, RefreshCw, Settings2, Star, X } from 'lucide-react'
 import type { AppState, BrowserProfile, ProfileGroup, ProxyNode, ProxyTestResult } from './types'
-import orbitLogo from './assets/prism-logo.svg'
+import orbitLogo from './assets/dlb-mascot.png'
 import { NOTION_AVATARS, nextNotionAvatar, pickNotionAvatar, resolveProfileAvatar } from './notion-avatars'
 
 const colors = ['#ef665f', '#e79b3f', '#44a97b', '#4c8fe6', '#7a68e8', '#cf659e']

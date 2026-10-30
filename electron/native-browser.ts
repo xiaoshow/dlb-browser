@@ -391,7 +391,7 @@ export class NativeBrowsers {
       let dockImage: string | undefined
       if (process.platform === 'darwin') {
         const baseIcon = join(this.resources, 'native/prism-dock.png')
-        const badgedIcon = join(directory, `dock-vA-${number}.png`)
+        const badgedIcon = join(directory, `dock-mascot-v1-${number}.png`)
         try {
           await access(badgedIcon)
           dockImage = (await readFile(badgedIcon)).toString('base64')
