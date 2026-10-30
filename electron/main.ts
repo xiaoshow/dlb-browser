@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, safeStorage, session } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -392,6 +392,10 @@ app.on('second-instance', (_event, argv) => {
 })
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') {
+    const icon = nativeImage.createFromPath(join(app.isPackaged ? process.resourcesPath : join(dirname, '../resources'), 'native/prism-dock.png'))
+    if (!icon.isEmpty()) app.dock?.setIcon(icon)
+  }
   await killOrphanXray(app.getPath('userData'))
   createWindow()
   installMenu()
