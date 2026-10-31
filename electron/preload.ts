@@ -29,5 +29,6 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   workspaceGoForward: (tabId: string) => ipcRenderer.invoke('workspace:go-forward', tabId),
   workspaceReload: (tabId: string) => ipcRenderer.invoke('workspace:reload', tabId),
   workspaceSetCommandBar: (visible: boolean) => ipcRenderer.invoke('workspace:set-command-bar', visible),
+  workspaceSetProfileColor: (profileId: string, color: string) => ipcRenderer.invoke('workspace:set-profile-color', profileId, color),
   onWorkspaceState: (callback: (state: any) => void) => { const listener = (_event: Electron.IpcRendererEvent, state: any) => callback(state); ipcRenderer.on('workspace:state', listener); return () => ipcRenderer.removeListener('workspace:state', listener) },
 })

@@ -104,11 +104,12 @@ export class GroupWorkspaceManager {
     if (ws.win.isDestroyed()) return
     const [width, height] = ws.win.getContentSize()
     const sidebarWidth = 250
-    const margin = 8
+    const topBarHeight = 44
+    const margin = 6
     const contentX = sidebarWidth + margin
-    const contentY = margin
+    const contentY = topBarHeight + margin
     const contentW = Math.max(0, width - sidebarWidth - margin * 2)
-    const contentH = Math.max(0, height - margin * 2)
+    const contentH = Math.max(0, height - topBarHeight - margin * 2)
 
     const active = ws.tabs.find((t) => t.id === ws.activeTabId)
     for (const tab of ws.tabs) {
@@ -119,7 +120,7 @@ export class GroupWorkspaceManager {
           width: contentW,
           height: contentH,
         })
-        tab.view.setVisible(!ws.commandBarOpen)
+        tab.view.setVisible(true)
       } else {
         tab.view.setVisible(false)
       }
@@ -365,6 +366,44 @@ export class GroupWorkspaceManager {
     this.switchTab(groupId, newTab.id)
   }
 
+  private getArcBgColor(hex?: string): string {
+    const map: Record<string, string> = {
+      '#ea580c': '#ffaa88',
+      '#059669': '#8ee2b5',
+      '#2563eb': '#8cd3f8',
+      '#7c3aed': '#c8b7f8',
+      '#e11d48': '#f9a8d4',
+      '#d97706': '#fde047',
+      '#0284c7': '#8cd3f8',
+      '#16a34a': '#bef264',
+      '#0d9488': '#7ee2d4',
+    }
+    return map[hex || ''] || hex || '#8ee2b5'
+  }
+
+  setProfileColor(groupId: string, profileId: string, color: string) {
+    const ws = this.workspaces.get(groupId)
+    if (!ws) return
+    for (const t of ws.tabs) {
+      if (t.profileId === profileId) {
+        t.color = color
+      }
+    }
+    const active = ws.tabs.find((t) => t.id === ws.activeTabId)
+    if (active && active.profileId === profileId) {
+      try {
+        ws.win.setBackgroundColor(this.getArcBgColor(color))
+      } catch {}
+    }
+    this.broadcastState(ws)
+
+    try {
+      const state = this.getState()
+      const p = (state.profiles || []).find((item: any) => item.id === profileId)
+      if (p) p.color = color
+    } catch {}
+  }
+
   switchTab(groupId: string, tabId: string) {
     const ws = this.workspaces.get(groupId)
     if (!ws) return
@@ -374,7 +413,7 @@ export class GroupWorkspaceManager {
     ws.activeTabId = tabId
     if (target.color) {
       try {
-        ws.win.setBackgroundColor(target.color)
+        ws.win.setBackgroundColor(this.getArcBgColor(target.color))
       } catch {}
     }
     this.updateBounds(ws)

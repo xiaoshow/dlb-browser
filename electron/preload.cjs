@@ -29,5 +29,6 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   workspaceGoForward: (tabId) => ipcRenderer.invoke('workspace:go-forward', tabId),
   workspaceReload: (tabId) => ipcRenderer.invoke('workspace:reload', tabId),
   workspaceSetCommandBar: (visible) => ipcRenderer.invoke('workspace:set-command-bar', visible),
+  workspaceSetProfileColor: (profileId, color) => ipcRenderer.invoke('workspace:set-profile-color', profileId, color),
   onWorkspaceState: (callback) => { const listener = (_event, state) => callback(state); ipcRenderer.on('workspace:state', listener); return () => ipcRenderer.removeListener('workspace:state', listener) },
 })

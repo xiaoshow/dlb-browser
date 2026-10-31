@@ -741,7 +741,7 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   height: 100vh;
   background: var(--arc-sidebar, #7ce0aa);
   transition: background-color 0.25s ease;
-  border-right: 1px solid rgba(0, 0, 0, 0.07);
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   user-select: none;
@@ -750,7 +750,7 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   z-index: 20;
 }
 
-/* Top: Traffic Light Padding & Navigation */
+/* Top: Traffic Light Padding & Group Pill */
 .arc-sidebar-top {
   height: 44px;
   display: flex;
@@ -762,118 +762,168 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   width: 78px;
   flex-shrink: 0;
 }
-.arc-nav-controls {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  -webkit-app-region: no-drag;
-}
-.arc-nav-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: #173f2d;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.arc-nav-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.45);
-}
-.arc-nav-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-.arc-nav-btn.spin-icon {
-  animation: spin 1s linear infinite;
-}
-
-/* Search Pill (Omnibox Pill) */
-.arc-search-pill-wrapper {
-  padding: 0 12px;
-  margin: 4px 0 10px 0;
-  -webkit-app-region: no-drag;
-}
-.arc-search-pill {
-  width: 100%;
-  height: 34px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  color: #173f2d;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-}
-.arc-search-pill:hover {
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
-}
-.arc-search-icon {
-  color: #1f4e38;
-  opacity: 0.8;
-  flex-shrink: 0;
-}
-.arc-search-placeholder {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1f4e38;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Profile / Space Title Header */
-.arc-profile-header {
+.arc-group-pill {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 14px 8px;
-  font-size: 12.5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.45);
+  font-size: 11.5px;
   font-weight: 700;
-  color: #153c29;
-}
-.arc-profile-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.arc-profile-name {
+  color: var(--arc-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+  -webkit-app-region: no-drag;
 }
-.arc-group-badge {
-  font-size: 10px;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.4);
-  padding: 1px 6px;
-  border-radius: 6px;
-  color: #1f4e38;
+.arc-group-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.arc-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Vertical Tab List */
+/* Color Switcher Bar ("我可以切颜色") */
+.arc-color-switcher-bar {
+  padding: 6px 12px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  -webkit-app-region: no-drag;
+}
+.arc-color-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--arc-text);
+  margin-bottom: 6px;
+}
+.arc-color-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--arc-text);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.arc-color-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+.arc-palette-dots-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+.arc-palette-dots-row::-webkit-scrollbar {
+  display: none;
+}
+.arc-palette-dot-btn {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+  outline: none;
+}
+.arc-palette-dot-btn:hover {
+  transform: scale(1.22);
+}
+.arc-palette-dot-btn.selected {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.28);
+  transform: scale(1.18);
+}
+
+/* 2. Unified Multi-Profile Tabs List */
 .arc-tabs-list {
   flex: 1;
   overflow-y: auto;
+  padding: 10px 10px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 0 10px;
+  gap: 14px;
   scrollbar-width: none;
+  -webkit-app-region: no-drag;
 }
 .arc-tabs-list::-webkit-scrollbar {
   display: none;
+}
+.arc-profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.arc-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--arc-text);
+  opacity: 0.85;
+}
+.arc-section-header.active-section {
+  opacity: 1;
+}
+.arc-section-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.arc-section-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arc-section-count {
+  font-size: 10px;
+  opacity: 0.75;
+  background: rgba(0, 0, 0, 0.08);
+  padding: 0 5px;
+  border-radius: 6px;
+}
+.arc-section-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text);
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 0.15s, background 0.15s;
+}
+.arc-section-add-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.5);
+}
+.arc-section-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 .arc-tab-item {
   display: flex;
@@ -881,8 +931,8 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   gap: 8px;
   padding: 7px 10px;
   border-radius: 8px;
-  font-size: 13px;
-  color: #1b3d2e;
+  font-size: 12.5px;
+  color: var(--arc-text);
   cursor: pointer;
   transition: all 0.12s ease;
   position: relative;
@@ -943,188 +993,171 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   color: #0f172a;
 }
 
-/* New Tab Button (Arc Style) */
-.arc-new-tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.45);
-  border: 1px dashed rgba(255, 255, 255, 0.7);
-  color: #173f2d;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 6px;
-  transition: all 0.15s ease;
-}
-.arc-new-tab-btn:hover {
-  background: rgba(255, 255, 255, 0.75);
-  border-color: #ffffff;
-}
-
-/* Bottom Spaces Switcher Bar */
-.arc-bottom-bar {
-  height: 48px;
+/* Sidebar Bottom */
+.arc-sidebar-bottom {
+  height: 46px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 10px;
+  -webkit-app-region: no-drag;
 }
-.arc-spaces-pill-group {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.arc-space-btn {
+.arc-isolation-note {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--arc-text);
+  opacity: 0.8;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  border: 1.5px solid transparent;
-  background: rgba(255, 255, 255, 0.35);
-  font-size: 11px;
-  font-weight: 700;
-  color: #173f2d;
+}
+.arc-bottom-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--arc-text);
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease;
 }
-.arc-space-btn:hover {
-  background: rgba(255, 255, 255, 0.6);
+.arc-bottom-new-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
 }
-.arc-space-btn.active {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+
+/* 2. Main Content Area & Chrome-Style Top Address Bar */
+.arc-main-area {
+  flex: 1;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--arc-bg, #8ee2b5);
+  transition: background-color 0.25s ease;
+  position: relative;
+  overflow: hidden;
 }
-.arc-space-dot {
+
+.arc-chrome-toolbar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: transparent;
+  -webkit-app-region: drag;
+  z-index: 10;
+}
+.arc-chrome-nav {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  -webkit-app-region: no-drag;
+}
+.arc-chrome-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text, #173f2d);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.arc-chrome-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.45);
+}
+.arc-chrome-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.arc-chrome-btn.spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+.arc-chrome-profile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #1e293b;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+.arc-badge-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-}
-.arc-space-num {
-  line-height: 1;
-}
-.arc-space-add-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: none;
-  background: rgba(255, 255, 255, 0.35);
-  color: #173f2d;
-  cursor: pointer;
-  transition: all 0.15s ease;
   flex-shrink: 0;
 }
-.arc-space-add-btn:hover {
-  background: rgba(255, 255, 255, 0.7);
-}
-
-/* 2. Arc Floating Command Bar (Spotlight Palette) */
-.arc-command-palette-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--arc-bg, #8ee2b5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-}
-.arc-command-card {
-  width: 520px;
-  max-width: 90vw;
-  background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  animation: arcCardPop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes arcCardPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.96) translateY(-8px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-.arc-command-form {
-  display: flex;
-  flex-direction: column;
-}
-.arc-command-input-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f1f5f9;
-}
-.arc-command-globe {
-  color: #0f172a;
-  flex-shrink: 0;
-}
-.arc-command-input {
-  flex: 1;
-  font-size: 17px;
-  font-weight: 500;
-  border: none;
-  outline: none;
-  color: #1e293b;
-  background: transparent;
-}
-.arc-command-info-pill {
-  font-size: 11px;
-  color: #94a3b8;
-  background: #f1f5f9;
-  padding: 2px 7px;
-  border-radius: 6px;
-}
-.arc-command-suggestions {
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 280px;
-  overflow-y: auto;
-}
-.arc-suggestion-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  font-size: 14px;
-  color: #334155;
-  transition: all 0.1s ease;
-  width: 100%;
-}
-.arc-suggestion-item:hover,
-.arc-suggestion-item.primary-highlight {
-  background: var(--arc-highlight, #5ba383) !important;
-  color: #ffffff !important;
-}
-.arc-sugg-text {
-  flex: 1;
+.arc-badge-text {
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
 }
-.arc-sugg-badge {
-  font-size: 11px;
-  opacity: 0.8;
+
+.arc-chrome-omnibox-form {
+  flex: 1;
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+.arc-chrome-omnibox {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 16px;
+  padding: 0 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+}
+.arc-chrome-omnibox:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+.arc-lock-icon {
+  color: #10b981;
+  flex-shrink: 0;
+}
+.arc-chrome-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.arc-chrome-progress-bar {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  z-index: 10;
+}
+.arc-chrome-progress-inner {
+  height: 100%;
+  width: 45%;
+  animation: progress-slide 1.2s infinite ease-in-out;
 }
 
 /* Loading Screen */

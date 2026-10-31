@@ -7,32 +7,65 @@ import {
   Plus,
   X,
   Globe,
-  Search,
   Lock,
-  Compass,
-  ChevronRight,
-  Folder,
-  Layers,
-  Sparkles,
+  ShieldCheck,
+  Palette,
 } from 'lucide-react'
 
-export const ARC_THEMES: Record<string, { bg: string; sidebar: string; highlight: string; text: string; searchPill: string }> = {
-  '#8ee2b5': { bg: '#8ee2b5', sidebar: '#76d8a3', highlight: '#3f986d', text: '#133e29', searchPill: 'rgba(255, 255, 255, 0.45)' },
-  '#c9baf7': { bg: '#c9baf7', sidebar: '#b6a2f2', highlight: '#7352d9', text: '#261754', searchPill: 'rgba(255, 255, 255, 0.45)' },
-  '#fbb39d': { bg: '#fbb39d', sidebar: '#f99e83', highlight: '#e25c38', text: '#43190f', searchPill: 'rgba(255, 255, 255, 0.45)' },
-  '#8fd5fa': { bg: '#8fd5fa', sidebar: '#72c7f5', highlight: '#218ec7', text: '#0e3449', searchPill: 'rgba(255, 255, 255, 0.45)' },
-  '#fde047': { bg: '#fde047', sidebar: '#facc15', highlight: '#ca8a04', text: '#422006', searchPill: 'rgba(255, 255, 255, 0.45)' },
-  '#f9a8d4': { bg: '#f9a8d4', sidebar: '#f472b6', highlight: '#db2777', text: '#500724', searchPill: 'rgba(255, 255, 255, 0.45)' },
-  '#7de2d1': { bg: '#7de2d1', sidebar: '#61d4c1', highlight: '#0f947e', text: '#09362e', searchPill: 'rgba(255, 255, 255, 0.45)' },
-  '#a3e635': { bg: '#a3e635', sidebar: '#8fd622', highlight: '#65a30d', text: '#1a2e05', searchPill: 'rgba(255, 255, 255, 0.45)' },
+export interface ArcPalette {
+  id: string
+  name: string
+  bg: string
+  sidebar: string
+  highlight: string
+  text: string
+  dot: string
+}
+
+export const ARC_PALETTES: ArcPalette[] = [
+  { id: 'mint', name: 'Mint 薄荷绿', bg: '#8ee2b5', sidebar: '#72dba2', highlight: '#2d885c', text: '#103623', dot: '#10b981' },
+  { id: 'peach', name: 'Coral 珊瑚橙', bg: '#fca58e', sidebar: '#f98b70', highlight: '#e05528', text: '#4a180b', dot: '#ea580c' },
+  { id: 'lavender', name: 'Lavender 薰衣草紫', bg: '#c8b7f8', sidebar: '#b69ff4', highlight: '#6c48d4', text: '#241452', dot: '#7c3aed' },
+  { id: 'sky', name: 'Sky 晴空蓝', bg: '#8cd3f8', sidebar: '#70c5f4', highlight: '#1d87bf', text: '#0b2e40', dot: '#0284c7' },
+  { id: 'yellow', name: 'Lemon 柠檬金', bg: '#fde047', sidebar: '#facc15', highlight: '#b45309', text: '#451a03', dot: '#d97706' },
+  { id: 'rose', name: 'Rose 玫瑰粉', bg: '#f9a8d4', sidebar: '#f472b6', highlight: '#be185d', text: '#4c0519', dot: '#e11d48' },
+  { id: 'teal', name: 'Teal 碧波青', bg: '#7ee2d4', sidebar: '#60d8c8', highlight: '#0d9488', text: '#08332f', dot: '#0d9488' },
+  { id: 'sage', name: 'Sage 嫩芽绿', bg: '#bef264', sidebar: '#a3e635', highlight: '#4d7c0f', text: '#1a2e05', dot: '#16a34a' },
+]
+
+export function getArcTheme(hex?: string): ArcPalette {
+  if (!hex) return ARC_PALETTES[0]
+  const lower = hex.toLowerCase()
+  const found = ARC_PALETTES.find(
+    (p) =>
+      p.bg.toLowerCase() === lower ||
+      p.dot.toLowerCase() === lower ||
+      p.sidebar.toLowerCase() === lower ||
+      p.highlight.toLowerCase() === lower
+  )
+  if (found) return found
+
+  if (lower.includes('orange') || lower === '#ea580c' || lower.startsWith('#f') || lower.startsWith('#e')) {
+    if (lower === '#e11d48' || lower.includes('rose') || lower.includes('pink')) return ARC_PALETTES[5]
+    return ARC_PALETTES[1] // Coral
+  }
+  if (lower.includes('purple') || lower === '#7c3aed' || lower.startsWith('#c') || lower.startsWith('#8b')) {
+    return ARC_PALETTES[2] // Lavender
+  }
+  if (lower.includes('blue') || lower === '#2563eb' || lower === '#0284c7' || lower.startsWith('#7') || lower.startsWith('#8')) {
+    return ARC_PALETTES[3] // Sky
+  }
+  if (lower.includes('green') || lower === '#059669' || lower === '#16a34a' || lower.startsWith('#8e') || lower.startsWith('#7c')) {
+    return ARC_PALETTES[0] // Mint
+  }
+  return ARC_PALETTES[0]
 }
 
 export function GroupWorkspace() {
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
-  const [commandBarOpen, setCommandBarOpen] = useState(false)
-  const [commandInput, setCommandInput] = useState('')
-  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
-  const commandInputRef = useRef<HTMLInputElement>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [isEditingUrl, setIsEditingUrl] = useState(false)
+  const [showColorPicker, setShowColorPicker] = useState(false)
 
   useEffect(() => {
     // Initial fetch
@@ -40,7 +73,7 @@ export function GroupWorkspace() {
       if (state) {
         setWorkspace(state)
         const active = state.tabs.find((t) => t.id === state.activeTabId)
-        if (active) setSelectedProfileId(active.profileId)
+        if (active) setUrlInput(active.url)
       }
     })
 
@@ -48,44 +81,26 @@ export function GroupWorkspace() {
     const unsubscribe = window.profileBrowser?.onWorkspaceState((state) => {
       setWorkspace(state)
       const active = state.tabs.find((t) => t.id === state.activeTabId)
-      if (active && !selectedProfileId) {
-        setSelectedProfileId(active.profileId)
+      if (active && !isEditingUrl) {
+        setUrlInput(active.url)
       }
     })
 
     return () => {
       if (unsubscribe) unsubscribe()
     }
-  }, [selectedProfileId])
-
-  // Sync command bar visibility with Electron WebContentsView
-  useEffect(() => {
-    void window.profileBrowser?.workspaceSetCommandBar(commandBarOpen)
-    if (commandBarOpen) {
-      setTimeout(() => commandInputRef.current?.focus(), 50)
-    }
-  }, [commandBarOpen])
-
-  // Global hotkeys (Cmd+T / Cmd+L / Escape)
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 't' || e.key === 'l')) {
-        e.preventDefault()
-        const active = workspace?.tabs.find((t) => t.id === workspace.activeTabId)
-        setCommandInput(active?.url && active.url !== 'about:blank' ? active.url : '')
-        setCommandBarOpen(true)
-      } else if (e.key === 'Escape' && commandBarOpen) {
-        e.preventDefault()
-        setCommandBarOpen(false)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [commandBarOpen, workspace])
+  }, [isEditingUrl])
 
   const activeTab = workspace?.tabs.find((t) => t.id === workspace.activeTabId)
 
-  // Distinct profiles in this group
+  // Sync address bar input when active tab changes and user isn't actively editing
+  useEffect(() => {
+    if (activeTab && !isEditingUrl) {
+      setUrlInput(activeTab.url)
+    }
+  }, [activeTab?.id, activeTab?.url, isEditingUrl])
+
+  // Extract distinct profiles in this group
   const profilesMap = new Map<string, { id: string; name: string; number: number; color: string }>()
   workspace?.tabs.forEach((tab) => {
     if (!profilesMap.has(tab.profileId)) {
@@ -98,20 +113,13 @@ export function GroupWorkspace() {
     }
   })
   const profiles = Array.from(profilesMap.values())
-  const currentProfile = profiles.find((p) => p.id === (selectedProfileId || activeTab?.profileId)) || profiles[0]
 
-  // Active theme based on current profile's Arc color
-  const theme = ARC_THEMES[currentProfile?.color] || ARC_THEMES['#8ee2b5']
-
-  function openCommandBar(defaultText = '') {
-    setCommandInput(defaultText)
-    setCommandBarOpen(true)
-  }
+  // CRITICAL RULE 1: Theme color is determined by the active tab's profile!
+  const currentProfile = profiles.find((p) => p.id === activeTab?.profileId) || profiles[0]
+  const theme = getArcTheme(currentProfile?.color)
 
   function handleSwitchTab(tabId: string) {
-    const tab = workspace?.tabs.find((t) => t.id === tabId)
-    if (tab) setSelectedProfileId(tab.profileId)
-    setCommandBarOpen(false)
+    setIsEditingUrl(false)
     void window.profileBrowser?.workspaceSwitchTab(tabId)
   }
 
@@ -120,21 +128,21 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceCloseTab(tabId)
   }
 
-  function handleNewTab() {
-    openCommandBar('')
+  function handleNewTabForProfile(profileId: string) {
+    void window.profileBrowser?.workspaceNewTab(profileId)
   }
 
-  function handleCommandSubmit(e: React.FormEvent) {
+  function handleNavigate(e: React.FormEvent) {
     e.preventDefault()
-    const target = commandInput.trim()
-    if (!target) return
-    setCommandBarOpen(false)
+    if (!activeTab || !urlInput.trim()) return
+    setIsEditingUrl(false)
+    void window.profileBrowser?.workspaceNavigate(activeTab.id, urlInput)
+  }
 
-    if (activeTab) {
-      void window.profileBrowser?.workspaceNavigate(activeTab.id, target)
-    } else {
-      void window.profileBrowser?.workspaceNewTab(currentProfile?.id, target)
-    }
+  function handlePickColor(palette: ArcPalette) {
+    if (!currentProfile) return
+    void window.profileBrowser?.workspaceSetProfileColor(currentProfile.id, palette.dot)
+    setShowColorPicker(false)
   }
 
   function handleGoBack() {
@@ -168,255 +176,223 @@ export function GroupWorkspace() {
           '--arc-sidebar': theme.sidebar,
           '--arc-highlight': theme.highlight,
           '--arc-text': theme.text,
-          '--arc-pill': theme.searchPill,
         } as React.CSSProperties
       }
     >
       {/* 1. Left Arc Sidebar (250px) */}
       <aside className="arc-sidebar">
-        {/* Top Header: Traffic light padding + Navigation controls */}
+        {/* Top Header: Traffic light spacer */}
         <div className="arc-sidebar-top">
           <div className="arc-traffic-spacer" />
-          <div className="arc-nav-controls">
-            <button
-              type="button"
-              className="arc-nav-btn"
-              disabled={!activeTab?.canGoBack}
-              onClick={handleGoBack}
-              title="后退"
-            >
-              <ArrowLeft size={15} />
-            </button>
-            <button
-              type="button"
-              className="arc-nav-btn"
-              disabled={!activeTab?.canGoForward}
-              onClick={handleGoForward}
-              title="前进"
-            >
-              <ArrowRight size={15} />
-            </button>
-            <button
-              type="button"
-              className={`arc-nav-btn ${activeTab?.loading ? 'spin-icon' : ''}`}
-              onClick={handleReload}
-              title="刷新"
-            >
-              <RotateCw size={14} />
-            </button>
+          <div className="arc-group-pill" title={`当前分组：${workspace.groupName}`}>
+            <span className="arc-group-dot" style={{ backgroundColor: theme.highlight }} />
+            <span className="arc-group-name">{workspace.groupName}</span>
           </div>
         </div>
 
-        {/* Omnibox / Search Pill (Arc Signature) */}
-        <div className="arc-search-pill-wrapper">
-          <button
-            type="button"
-            className="arc-search-pill"
-            onClick={() => openCommandBar(activeTab?.url && activeTab.url !== 'about:blank' ? activeTab.url : '')}
-          >
-            <Search size={14} className="arc-search-icon" />
-            <span className="arc-search-placeholder">
-              {activeTab?.url && activeTab.url !== 'about:blank'
-                ? activeTab.url.replace(/^https?:\/\//i, '').slice(0, 24)
-                : 'Search or Enter URL...'}
+        {/* Profile Color Switcher Bar ("我可以切颜色") */}
+        <div className="arc-color-switcher-bar">
+          <div className="arc-color-header">
+            <span>
+              #{currentProfile?.number} {currentProfile?.name}
             </span>
-          </button>
-        </div>
+            <button
+              type="button"
+              className="arc-color-toggle-btn"
+              title="切换此账号的 Arc 主题颜色"
+              onClick={() => setShowColorPicker(!showColorPicker)}
+            >
+              <Palette size={13} />
+              <span>切颜色</span>
+            </button>
+          </div>
 
-        {/* Current Active Profile / Space Indicator */}
-        <div className="arc-profile-header">
-          <span className="arc-profile-dot" style={{ backgroundColor: theme.highlight }} />
-          <span className="arc-profile-name">
-            #{currentProfile?.number} {currentProfile?.name}
-          </span>
-          <span className="arc-group-badge">{workspace.groupName}</span>
-        </div>
-
-        {/* Vertical Tabs List */}
-        <div className="arc-tabs-list">
-          {workspace.tabs.map((tab) => {
-            const isActive = tab.id === workspace.activeTabId
-            return (
-              <div
-                key={tab.id}
-                className={`arc-tab-item ${isActive ? 'active' : ''}`}
-                onClick={() => handleSwitchTab(tab.id)}
-                title={`${tab.profileName} · ${tab.title || tab.url}`}
-              >
-                {/* Profile Color Dot */}
-                <span
-                  className="arc-tab-dot"
-                  style={{
-                    backgroundColor: tab.color,
-                  }}
-                  title={`账号 #${tab.profileNumber} (${tab.profileName})`}
-                />
-
-                {/* Favicon */}
-                {tab.favicon ? (
-                  <img
-                    src={tab.favicon}
-                    alt=""
-                    className="arc-tab-favicon"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none'
-                    }}
-                  />
-                ) : (
-                  <Globe size={14} className="arc-tab-default-icon" style={{ color: tab.color }} />
-                )}
-
-                {/* Title */}
-                <span className="arc-tab-title">{tab.title || tab.profileName}</span>
-
-                {/* Close Button */}
+          {/* Color Dots Row */}
+          <div className="arc-palette-dots-row">
+            {ARC_PALETTES.map((pal) => {
+              const isSelected = getArcTheme(currentProfile?.color).id === pal.id
+              return (
                 <button
+                  key={pal.id}
                   type="button"
-                  className="arc-tab-close-btn"
-                  aria-label="关闭标签"
-                  onClick={(e) => handleCloseTab(e, tab.id)}
-                >
-                  <X size={12} />
-                </button>
+                  className={`arc-palette-dot-btn ${isSelected ? 'selected' : ''}`}
+                  style={{ backgroundColor: pal.dot }}
+                  title={pal.name}
+                  onClick={() => handlePickColor(pal)}
+                />
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 2. Unified Tabs List ("两个profile放在的tab列在一起") */}
+        <div className="arc-tabs-list">
+          {profiles.map((p) => {
+            const profileTabs = workspace.tabs.filter((t) => t.profileId === p.id)
+            const pTheme = getArcTheme(p.color)
+            const isProfileActive = p.id === currentProfile?.id
+
+            return (
+              <div key={p.id} className="arc-profile-section">
+                {/* Profile Section Header */}
+                <div className={`arc-section-header ${isProfileActive ? 'active-section' : ''}`}>
+                  <span className="arc-section-dot" style={{ backgroundColor: pTheme.dot }} />
+                  <span className="arc-section-name">
+                    #{p.number} {p.name}
+                  </span>
+                  <span className="arc-section-count">{profileTabs.length}</span>
+                  <button
+                    type="button"
+                    className="arc-section-add-btn"
+                    title={`为 #${p.number} ${p.name} 新开相邻标签页`}
+                    onClick={() => handleNewTabForProfile(p.id)}
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+
+                {/* Tabs for this Profile */}
+                <div className="arc-section-tabs">
+                  {profileTabs.map((tab) => {
+                    const isActive = tab.id === workspace.activeTabId
+                    return (
+                      <div
+                        key={tab.id}
+                        className={`arc-tab-item ${isActive ? 'active' : ''}`}
+                        onClick={() => handleSwitchTab(tab.id)}
+                        title={`${tab.profileName} · ${tab.title || tab.url}`}
+                      >
+                        {/* Profile Color Dot */}
+                        <span className="arc-tab-dot" style={{ backgroundColor: pTheme.dot }} />
+
+                        {/* Favicon */}
+                        {tab.favicon ? (
+                          <img
+                            src={tab.favicon}
+                            alt=""
+                            className="arc-tab-favicon"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <Globe size={14} className="arc-tab-default-icon" style={{ color: pTheme.highlight }} />
+                        )}
+
+                        {/* Title */}
+                        <span className="arc-tab-title">{tab.title || tab.profileName}</span>
+
+                        {/* Close Button */}
+                        <button
+                          type="button"
+                          className="arc-tab-close-btn"
+                          aria-label="关闭标签"
+                          onClick={(e) => handleCloseTab(e, tab.id)}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )
           })}
+        </div>
 
-          {/* New Tab Button */}
-          <button type="button" className="arc-new-tab-btn" onClick={handleNewTab}>
+        {/* Bottom Bar: Total Tabs Count & Quick Add */}
+        <div className="arc-sidebar-bottom">
+          <small className="arc-isolation-note" title="各 Profile 独立持久化 Partition，严格物理隔离不串号">
+            <ShieldCheck size={13} /> 物理隔离 · 绝对零串号
+          </small>
+          <button
+            type="button"
+            className="arc-bottom-new-btn"
+            title="在当前激活账号下新建标签页"
+            onClick={() => handleNewTabForProfile(currentProfile?.id)}
+          >
             <Plus size={15} />
             <span>New Tab</span>
           </button>
         </div>
-
-        {/* Bottom Spaces / Profiles Switcher Bar (Arc Style) */}
-        <div className="arc-bottom-bar">
-          <div className="arc-spaces-pill-group">
-            {profiles.map((p) => {
-              const isCurrent = p.id === currentProfile?.id
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`arc-space-btn ${isCurrent ? 'active' : ''}`}
-                  style={{ borderColor: isCurrent ? p.color : 'transparent' }}
-                  onClick={() => {
-                    setSelectedProfileId(p.id)
-                    const firstTabOfProfile = workspace.tabs.find((t) => t.profileId === p.id)
-                    if (firstTabOfProfile) handleSwitchTab(firstTabOfProfile.id)
-                  }}
-                  title={`切换到 #${p.number} ${p.name}`}
-                >
-                  <span className="arc-space-dot" style={{ backgroundColor: p.color }} />
-                  <span className="arc-space-num">#{p.number}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <button
-            type="button"
-            className="arc-space-add-btn"
-            title="在此账号下新开相邻标签页 (Cmd+T)"
-            onClick={() => void window.profileBrowser?.workspaceNewTab(currentProfile?.id)}
-          >
-            <Plus size={15} />
-          </button>
-        </div>
       </aside>
 
-      {/* 2. Arc Floating Command Bar (Spotlight Palette - Image 2) */}
-      {commandBarOpen && (
-        <div className="arc-command-palette-backdrop" onClick={() => setCommandBarOpen(false)}>
-          <div className="arc-command-card" onClick={(e) => e.stopPropagation()}>
-            <form onSubmit={handleCommandSubmit} className="arc-command-form">
-              <div className="arc-command-input-row">
-                <Globe size={18} className="arc-command-globe" />
-                <input
-                  ref={commandInputRef}
-                  type="text"
-                  className="arc-command-input"
-                  value={commandInput}
-                  onChange={(e) => setCommandInput(e.target.value)}
-                  placeholder="Search or Enter URL..."
-                  spellCheck={false}
-                />
-                <span className="arc-command-info-pill">ESC 关闭</span>
-              </div>
-
-              <div className="arc-command-suggestions">
-                {commandInput.trim() ? (
-                  <>
-                    <button type="submit" className="arc-suggestion-item primary-highlight">
-                      <Globe size={16} />
-                      <span className="arc-sugg-text">
-                        {commandInput.startsWith('http') || commandInput.includes('.')
-                          ? `前往网址：${commandInput}`
-                          : `Google 搜索：${commandInput}`}
-                      </span>
-                      <span className="arc-sugg-badge">↵ 回车</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="arc-suggestion-item"
-                      onClick={() => {
-                        setCommandBarOpen(false)
-                        void window.profileBrowser?.workspaceNewTab(
-                          currentProfile?.id,
-                          `https://www.google.com/search?q=${encodeURIComponent(commandInput)}`
-                        )
-                      }}
-                    >
-                      <Search size={16} />
-                      <span className="arc-sugg-text">新开 Tab 搜索：{commandInput}</span>
-                      <span className="arc-sugg-badge">新标签</span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="arc-suggestion-item primary-highlight"
-                      onClick={() => {
-                        setCommandBarOpen(false)
-                        void window.profileBrowser?.workspaceNavigate(activeTab?.id || '', 'https://www.google.com')
-                      }}
-                    >
-                      <Globe size={16} />
-                      <span className="arc-sugg-text">Google 首页</span>
-                      <span className="arc-sugg-badge">google.com</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="arc-suggestion-item"
-                      onClick={() => {
-                        setCommandBarOpen(false)
-                        void window.profileBrowser?.workspaceNavigate(activeTab?.id || '', 'https://mail.google.com')
-                      }}
-                    >
-                      <Layers size={16} />
-                      <span className="arc-sugg-text">Gmail 邮箱</span>
-                      <span className="arc-sugg-badge">mail.google.com</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="arc-suggestion-item"
-                      onClick={() => {
-                        setCommandBarOpen(false)
-                        void window.profileBrowser?.workspaceNavigate(activeTab?.id || '', 'https://www.youtube.com')
-                      }}
-                    >
-                      <Sparkles size={16} />
-                      <span className="arc-sugg-text">YouTube</span>
-                      <span className="arc-sugg-badge">youtube.com</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            </form>
+      {/* 2. Main Content Area */}
+      <main className="arc-main-area">
+        {/* Chrome-Style Permanent Top Address Bar ("原版的Google Chrome一样在上面吧，不要弹出来了") */}
+        <header className="arc-chrome-toolbar">
+          {/* Nav Buttons */}
+          <div className="arc-chrome-nav">
+            <button
+              type="button"
+              className="arc-chrome-btn"
+              disabled={!activeTab?.canGoBack}
+              onClick={handleGoBack}
+              title="后退"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <button
+              type="button"
+              className="arc-chrome-btn"
+              disabled={!activeTab?.canGoForward}
+              onClick={handleGoForward}
+              title="前进"
+            >
+              <ArrowRight size={16} />
+            </button>
+            <button
+              type="button"
+              className={`arc-chrome-btn ${activeTab?.loading ? 'spin-icon' : ''}`}
+              onClick={handleReload}
+              title="刷新"
+            >
+              <RotateCw size={15} />
+            </button>
           </div>
-        </div>
-      )}
+
+          {/* Active Profile Status Pill */}
+          {activeTab && (
+            <div
+              className="arc-chrome-profile-badge"
+              style={{
+                borderColor: `${theme.highlight}44`,
+                backgroundColor: 'rgba(255, 255, 255, 0.65)',
+              }}
+              title={`当前环境：${activeTab.profileName}（独立 Cookie，隔离运行）`}
+            >
+              <span className="arc-badge-dot" style={{ backgroundColor: theme.highlight }} />
+              <span className="arc-badge-text">
+                #{activeTab.profileNumber} {activeTab.profileName}
+              </span>
+            </div>
+          )}
+
+          {/* Chrome-Style Permanent Address / Omnibox Input Form */}
+          <form className="arc-chrome-omnibox-form" onSubmit={handleNavigate}>
+            <div className="arc-chrome-omnibox">
+              <Lock size={13} className="arc-lock-icon" />
+              <input
+                type="text"
+                className="arc-chrome-input"
+                value={urlInput}
+                onFocus={() => setIsEditingUrl(true)}
+                onBlur={() => setIsEditingUrl(false)}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="输入网址或 Google 搜索…"
+                spellCheck={false}
+              />
+            </div>
+          </form>
+        </header>
+
+        {/* Loading Progress Bar */}
+        {activeTab?.loading && (
+          <div className="arc-chrome-progress-bar">
+            <div className="arc-chrome-progress-inner" style={{ backgroundColor: theme.highlight }} />
+          </div>
+        )}
+      </main>
     </div>
   )
 }

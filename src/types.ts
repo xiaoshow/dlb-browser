@@ -156,6 +156,7 @@ export interface BrowserAPI {
   workspaceGoForward: (tabId: string) => Promise<void>
   workspaceReload: (tabId: string) => Promise<void>
   workspaceSetCommandBar: (visible: boolean) => Promise<void>
+  workspaceSetProfileColor: (profileId: string, color: string) => Promise<void>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
 }
 

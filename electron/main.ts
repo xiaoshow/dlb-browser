@@ -511,6 +511,11 @@ ipcMain.handle('workspace:set-command-bar', (event, visible: boolean) => {
   if (ws) groupWorkspaceManager.setCommandBar(ws.groupId, visible)
   return { ok: true }
 })
+ipcMain.handle('workspace:set-profile-color', (event, profileId: string, color: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.setProfileColor(ws.groupId, profileId, color)
+  return { ok: true }
+})
 
 ipcMain.handle('proxy:parse-vless', (_event, url: string) => {
   try { return { ok: true, node: parseVlessUrl(url) } }
