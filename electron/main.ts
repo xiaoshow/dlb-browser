@@ -16,6 +16,7 @@ import { GroupWorkspaceManager } from './group-workspace.js'
 // Avoid macOS Keychain prompts on unsigned/ad-hoc builds.
 app.commandLine.appendSwitch('use-mock-keychain')
 app.commandLine.appendSwitch('password-store', 'basic')
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
 
 if (app.isPackaged) {
   const prismData = join(app.getPath('appData'), 'prism-fingerprint-browser')

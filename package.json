@@ -51,6 +51,7 @@
       "dist-electron/ip-environment.js",
       "dist-electron/fingerprint.js",
       "electron/preload.cjs",
+      "electron/stealth-preload.cjs",
       "package.json",
       "!node_modules/**/*",
       "dist-electron/native-browser.js",

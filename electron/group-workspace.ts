@@ -264,10 +264,34 @@ export class GroupWorkspaceManager {
       console.warn(`[Workspace] Proxy config warning for ${profile.name}:`, e)
     }
 
-    // Clean user agent: strip "Electron/x.y.z" so Google doesn't block or drop login!
+    // Clean user agent: strip "Electron/x.y.z" so Google/Cloudflare doesn't block or drop login!
     const defaultUa = ses.getUserAgent()
-    const cleanUa = defaultUa.replace(/\s*Electron\/[0-9.]+/g, '')
+    const cleanUa = defaultUa.replace(/\s*Electron\/[0-9.]+/gi, '')
     ses.setUserAgent(profile.userAgentMode === 'custom' && profile.userAgent ? profile.userAgent : cleanUa)
+
+    // Remove Electron fingerprints from HTTP request headers (sec-ch-ua, User-Agent)
+    try {
+      ses.webRequest.onBeforeSendHeaders((details, callback) => {
+        const headers = { ...details.requestHeaders }
+        for (const k of Object.keys(headers)) {
+          if (k.toLowerCase() === 'user-agent') {
+            headers[k] = headers[k].replace(/\s*Electron\/[0-9.]+/gi, '')
+          }
+        }
+        const chromeBrands = '"Google Chrome";v="130", "Chromium";v="130", "Not?A_Brand";v="24"'
+        const fullVersion =
+          '"Google Chrome";v="130.0.6723.116", "Chromium";v="130.0.6723.116", "Not?A_Brand";v="24.0.0.0"'
+        for (const k of Object.keys(headers)) {
+          const lower = k.toLowerCase()
+          if (lower === 'sec-ch-ua') {
+            headers[k] = chromeBrands
+          } else if (lower === 'sec-ch-ua-full-version-list') {
+            headers[k] = fullVersion
+          }
+        }
+        callback({ requestHeaders: headers })
+      })
+    } catch {}
 
     // Import existing cookies from native profile SQLite so it has identical login state
     try {
@@ -281,11 +305,13 @@ export class GroupWorkspaceManager {
       setupCookieSyncBack(app.getPath('userData'), profile.id, ses)
     } catch {}
 
+    const stealthPreload = this.getPreloadPath().replace(/preload\.(cjs|js)/, 'stealth-preload.cjs')
     const view = new WebContentsView({
       webPreferences: {
         session: ses,
-        sandbox: true,
-        contextIsolation: true,
+        preload: stealthPreload,
+        sandbox: false,
+        contextIsolation: false,
         nodeIntegration: false,
         backgroundThrottling: true,
       },
