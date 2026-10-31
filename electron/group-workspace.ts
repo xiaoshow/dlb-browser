@@ -1,6 +1,7 @@
 import { app, BrowserWindow, session, WebContentsView } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { importNativeCookiesToSession, setupCookieSyncBack } from './cookie-bridge.js'
 
 export interface TabEntry {
   id: string
@@ -250,9 +251,22 @@ export class GroupWorkspaceManager {
       console.warn(`[Workspace] Proxy config warning for ${profile.name}:`, e)
     }
 
-    if (profile.userAgentMode === 'custom' && profile.userAgent) {
-      ses.setUserAgent(profile.userAgent)
+    // Clean user agent: strip "Electron/x.y.z" so Google doesn't block or drop login!
+    const defaultUa = ses.getUserAgent()
+    const cleanUa = defaultUa.replace(/\s*Electron\/[0-9.]+/g, '')
+    ses.setUserAgent(profile.userAgentMode === 'custom' && profile.userAgent ? profile.userAgent : cleanUa)
+
+    // Import existing cookies from native profile SQLite so it has identical login state
+    try {
+      await importNativeCookiesToSession(app.getPath('userData'), profile.id, ses)
+    } catch (e) {
+      console.warn(`[Workspace] Cookie import warning for ${profile.name}:`, e)
     }
+
+    // Bidirectional sync back to native profile SQLite so changes are preserved
+    try {
+      setupCookieSyncBack(app.getPath('userData'), profile.id, ses)
+    } catch {}
 
     const view = new WebContentsView({
       webPreferences: {

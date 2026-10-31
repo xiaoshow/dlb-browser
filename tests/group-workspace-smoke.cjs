@@ -140,4 +140,8 @@ app.whenReady().then(async () => {
   app.exit(1)
 })
 
-app.on('quit', () => fs.rmSync(root, { recursive: true, force: true }))
+app.on('quit', () => {
+  try {
+    fs.rmSync(root, { recursive: true, force: true })
+  } catch {}
+})
