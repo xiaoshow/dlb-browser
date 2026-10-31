@@ -697,22 +697,30 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   color: #ef4444;
 }
 .btn-workspace-open {
+  height: 36px;
   background: linear-gradient(135deg, #2563eb, #6366f1);
   color: #ffffff !important;
-  font-weight: 600;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  box-shadow: 0 2px 6px rgba(37,99,235,0.25);
+  gap: 7px;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
   border: none !important;
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: 0 13px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.btn-workspace-open:hover {
+.btn-workspace-open:hover:not(:disabled) {
   filter: brightness(1.08);
-  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+.btn-workspace-open:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
 }
 .group-actions-inline {
   display: inline-flex;
