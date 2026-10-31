@@ -672,36 +672,183 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   font-size: 12px;
 }
 
-.profile-folders{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}.folder-entry{display:inline-flex;align-items:center;gap:2px}.profile-folders .active{background:#e5edff;color:#2563eb}.profile-folders small{color:#8b97ad}.profile-folders>small{flex-basis:100%;font-size:12px}.profile-folders form{display:flex;gap:6px}.profile-folders input{padding:8px;border:1px solid #d8dfec;border-radius:8px}.manager-actions select{max-width:210px;padding:9px;border:1px solid #d8dfec;border-radius:8px}
+.profile-folders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.profile-folders > button.secondary {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.profile-folders .active {
+  background: #e5edff !important;
+  color: #2563eb !important;
+  border-color: #bfdbfe !important;
+}
 
-/* Folder Renaming & Inline Controls */
-.folder-rename-btn, .folder-del-btn {
+/* 一体化文件夹胶囊卡片 */
+.folder-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 6px 0 4px;
+  background: #ffffff;
+  border: 1px solid #e2e7ee;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(35, 55, 96, 0.04);
+  transition: all 0.15s ease;
+  user-select: none;
+  gap: 2px;
+}
+.folder-pill:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.folder-pill.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.folder-toggle-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
-  color: #64748b;
+  color: #94a3b8;
   cursor: pointer;
   border-radius: 4px;
-  transition: all 0.15s ease;
+  padding: 0;
 }
-.folder-rename-btn:hover {
+.folder-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #475569;
+}
+
+.folder-pill-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.folder-pill.active .folder-pill-name {
+  color: #1d4ed8;
+}
+
+.folder-count-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+.folder-pill.active .folder-count-badge {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.folder-rename-input {
+  width: 90px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid #3b82f6;
+  outline: none;
+}
+
+.folder-pill-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 2px;
+  padding-left: 2px;
+  border-left: 1px solid #f1f5f9;
+}
+.folder-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  transition: all 0.12s ease;
+}
+.folder-action-icon:hover {
   background: #e2e8f0;
   color: #1e293b;
 }
-.folder-del-btn:hover {
+.folder-action-icon.danger:hover {
   background: #fee2e2;
   color: #ef4444;
 }
 
-.group-actions-inline {
+.profile-folders small {
+  color: #8b97ad;
+}
+.profile-folders > small {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.profile-folders form {
+  display: flex;
+  gap: 6px;
+}
+.profile-folders input {
+  padding: 6px 10px;
+  border: 1px solid #d8dfec;
+  border-radius: 8px;
+  font-size: 12px;
+  height: 32px;
+}
+
+/* 操作栏移动下拉菜单，像素级对齐操作按钮 */
+.manager-actions select {
+  height: 36px;
+  max-width: 220px;
+  padding: 0 12px;
+  border: 1px solid #e2e7ee;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #536078;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 4px;
+  outline: none;
+  box-shadow: 0 2px 4px #225bdb0c;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.manager-actions select:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.manager-actions select:disabled {
+  opacity: 0.42;
+  cursor: default;
 }
 
 /* Arc-Style Group Workspace Layout & Palette */
@@ -1182,6 +1329,20 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+.arc-shared-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  white-space: nowrap;
+  letter-spacing: -0.2px;
 }
 .arc-bookmark-pill {
   display: inline-flex;

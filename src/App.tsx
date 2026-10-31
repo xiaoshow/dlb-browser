@@ -25,6 +25,7 @@ function App() {
   const [state, setState] = useState<AppState>(fallback)
   const [runtimeIds, setRuntimeIds] = useState<string[]>([])
   const [changingMode, setChangingMode] = useState(false)
+  const [activeNav, setActiveNav] = useState<'profiles' | 'proxies' | 'v2ray' | 'updates'>('profiles')
   const [v2raySyncOpen, setV2raySyncOpen] = useState(false)
   const [updateCenterOpen, setUpdateCenterOpen] = useState(false)
   const [openIds, setOpenIds] = useState<string[]>([])
@@ -212,13 +213,13 @@ function App() {
   }
 
   return <div className="orbit-window prism-management">
-    <><div className="management-titlebar"><span>DLB Browser 指纹浏览器</span><span>独立窗口工作空间</span></div><aside className="management-sidebar"><div className="prism-brand"><img src={orbitLogo} alt="DLB Browser Logo"/><div><strong>DLB Browser</strong><small>指纹浏览器 · Preview</small></div></div><button className="primary sidebar-create" onClick={() => setNewProfileModal(true)}><Plus size={19}/>新建浏览器环境</button><div className="navigation-caption">工作空间</div><nav><button className="active"><Globe2/>浏览器环境<span>{state.profiles.length}</span></button><button onClick={() => setProxyPanel(true)}><Network/>代理管理</button><button onClick={() => setV2raySyncOpen(true)}><Star/>v2rayN 收藏同步</button></nav><div className="navigation-caption">应用</div><nav><button onClick={() => setUpdateCenterOpen(true)}><RefreshCw/>更新中心</button></nav><div className="sidebar-bottom"><span><i className="live-dot"/>{runtimeIds.length} 个环境运行中</span><small>Fingerprint Chromium 148 内核</small><div>DLB Browser Preview <span>本地工作空间</span></div></div></aside></>
+    <><div className="management-titlebar"><span>DLB Browser 指纹浏览器</span><span>独立窗口工作空间</span></div><aside className="management-sidebar"><div className="prism-brand"><img src={orbitLogo} alt="DLB Browser Logo"/><div><strong>DLB Browser</strong><small>指纹浏览器 · Preview</small></div></div><button className="primary sidebar-create" onClick={() => setNewProfileModal(true)}><Plus size={19}/>新建浏览器环境</button><div className="navigation-caption">工作空间</div><nav><button className={activeNav === 'profiles' ? 'active' : ''} onClick={() => setActiveNav('profiles')}><Globe2/>浏览器环境<span>{state.profiles.length}</span></button><button className={activeNav === 'proxies' ? 'active' : ''} onClick={() => setActiveNav('proxies')}><Network/>代理管理</button><button className={activeNav === 'v2ray' ? 'active' : ''} onClick={() => setActiveNav('v2ray')}><Star/>v2rayN 收藏同步</button></nav><div className="navigation-caption">应用</div><nav><button className={activeNav === 'updates' ? 'active' : ''} onClick={() => setActiveNav('updates')}><RefreshCw/>更新中心</button></nav><div className="sidebar-bottom"><span><i className="live-dot"/>{runtimeIds.length} 个环境运行中</span><small>Fingerprint Chromium 148 内核</small><div>DLB Browser Preview <span>本地工作空间</span></div></div></aside></>
 
-    {<ProfileManager onOrganize={updateState} state={state} running={runtimeIds} onOpen={openProfile} onStop={stopWindowProfile} onEdit={setEditing} onUpdateAlias={(id, alias) => {
+    {activeNav === 'profiles' && <ProfileManager onOrganize={updateState} state={state} running={runtimeIds} onOpen={openProfile} onStop={stopWindowProfile} onEdit={setEditing} onUpdateAlias={(id, alias) => {
       const current = stateRef.current
       updateState({ ...current, profiles: current.profiles.map(p => p.id === id ? { ...p, alias: alias || undefined } : p) })
       setToast(alias ? `标签：${alias}` : '已清空标签')
-    }} onNew={() => setNewProfileModal(true)} onProxies={() => setProxyPanel(true)} onProtect={(ids) => { const current = stateRef.current; updateState({ ...current, profiles: current.profiles.map(p => ids.includes(p.id) ? { ...p, fingerprint: { ...p.fingerprint, ...stableFingerprint(p.fingerprint?.seed || p.id) }, webRTCPolicy: 'proxy-only' } : p) }); setToast('已保存稳定保护；运行中的 Profile 停止后再启动生效，种子保持不变') }} onModeChange={changeMode} modeBusy={changingMode} onDelete={async (ids) => {
+    }} onNew={() => setNewProfileModal(true)} onProxies={() => setActiveNav('proxies')} onProtect={(ids) => { const current = stateRef.current; updateState({ ...current, profiles: current.profiles.map(p => ids.includes(p.id) ? { ...p, fingerprint: { ...p.fingerprint, ...stableFingerprint(p.fingerprint?.seed || p.id) }, webRTCPolicy: 'proxy-only' } : p) }); setToast('已保存稳定保护；运行中的 Profile 停止后再启动生效，种子保持不变') }} onModeChange={changeMode} modeBusy={changingMode} onDelete={async (ids) => {
       const res = await window.profileBrowser?.deleteProfiles(ids)
       if (res?.ok && res.state) {
         stateRef.current = res.state
@@ -241,6 +242,10 @@ function App() {
       URL.revokeObjectURL(url)
       setToast(`已导出 ${list.length} 个环境配置`)
     }} onImportProfiles={() => setImportProfilesOpen(true)} />}
+
+    {activeNav === 'proxies' && <ProxyManager isPage onCreate={createFromProxy} state={state} activeProfile={active} updateState={updateState} onSelect={(proxy) => void selectProxyForActive(proxy)} onClose={() => setActiveNav('profiles')} openModal={() => setProxyModal(true)} />}
+    {activeNav === 'v2ray' && <V2raySync isPage state={state} onSaved={updateState} onClose={() => setActiveNav('profiles')} />}
+    {activeNav === 'updates' && <UpdateCenter onClose={() => setActiveNav('profiles')} />}
     {cookieProfile && <CookieManagerDialog profile={cookieProfile} onClose={() => setCookieProfile(null)} onToast={setToast} />}
     {importProfilesOpen && <ProfileImportDialog state={state} onClose={() => setImportProfilesOpen(false)} onImported={(nextState, count) => { updateState(nextState); setImportProfilesOpen(false); setToast(`已成功导入 ${count} 个浏览器环境`) }} />}
     {context && <TabContextMenu profile={state.profiles.find((p) => p.id === context.id)!} paused={pausedIds.includes(context.id)} x={context.x} y={context.y} proxy={state.proxies.find((p) => p.id === state.profiles.find((item) => item.id === context.id)?.proxyId)} onRename={() => { setRenaming(state.profiles.find((p) => p.id === context.id)!); setContext(null) }} onEdit={() => { setEditing(state.profiles.find((p) => p.id === context.id)!); setContext(null) }} onTogglePin={() => { togglePin(context.id); setContext(null) }} onPause={() => { void pauseProfile(context.id); setContext(null) }} onResume={() => { const profile = state.profiles.find((p) => p.id === context.id); if (profile) void openProfile(profile); setContext(null) }} onClose={() => { void closeTab(context.id); setContext(null) }} />}
@@ -248,9 +253,6 @@ function App() {
     {editing && <ProfileEditor profile={editing} proxies={state.proxies} groups={state.groups} onClose={() => setEditing(null)} onSave={saveProfile} onUpdateGroups={(nextGroups) => updateState({ ...stateRef.current, groups: nextGroups })} />}
     {renaming && <RenameProfileDialog profile={renaming} onClose={() => setRenaming(null)} onSave={renameProfile} />}
     {newProfileModal && <NewProfileDialog proxies={state.proxies} defaultProxyId={state.defaultProxyId} onClose={() => setNewProfileModal(false)} onCreate={(name, proxyId, avatar, alias) => void createAndOpenTab(name, proxyId, avatar, alias)} />}
-    {v2raySyncOpen && <V2raySync state={state} onSaved={updateState} onClose={() => setV2raySyncOpen(false)} />}
-    {updateCenterOpen && <UpdateCenter onClose={() => setUpdateCenterOpen(false)} />}
-    {proxyPanel && <ProxyManager onCreate={createFromProxy} state={state} activeProfile={active} updateState={updateState} onSelect={(proxy) => void selectProxyForActive(proxy)} onClose={() => setProxyPanel(false)} openModal={() => setProxyModal(true)} />}
     {proxyModal && <ProxyImporter onClose={() => setProxyModal(false)} onImported={(nodes) => { updateState({ ...stateRef.current, proxies: [...stateRef.current.proxies, ...nodes] }); setProxyModal(false); setToast(`已导入 ${nodes.length} 个代理`) }} />}
     {toast && <div className="toast" onAnimationEnd={() => setToast(null)}>{toast}</div>}
   </div>
@@ -440,13 +442,95 @@ function ProfileEditor({ profile: initial, proxies, groups, onClose, onSave, onU
   </section></div>
 }
 
-function ProxyManager({ onCreate, state, activeProfile, updateState, onSelect, onClose, openModal }: { onCreate: (proxy: ProxyNode) => Promise<void>; state: AppState; activeProfile?: BrowserProfile; updateState: (state: AppState) => void; onSelect: (proxy: ProxyNode) => void; onClose: () => void; openModal: () => void }) {
+function ProxyManager({ onCreate, state, activeProfile, updateState, onSelect, onClose, openModal, isPage }: { onCreate: (proxy: ProxyNode) => Promise<void>; state: AppState; activeProfile?: BrowserProfile; updateState: (state: AppState) => void; onSelect: (proxy: ProxyNode) => void; onClose: () => void; openModal: () => void; isPage?: boolean }) {
   const [creating, setCreating] = useState<string | null>(null)
   const [createError, setCreateError] = useState('')
   async function create(proxy: ProxyNode) { setCreating(proxy.id); setCreateError(''); try { await onCreate(proxy) } catch(e) { setCreateError(e instanceof Error ? e.message : '创建失败，请重试') } finally { setCreating(null) } }
   const [tests, setTests] = useState<Record<string, ProxyTestResult | 'testing'>>({})
   async function test(proxy: ProxyNode) { setTests((value) => ({ ...value, [proxy.id]: 'testing' })); const result = await window.profileBrowser!.testProxy(proxy); setTests((value) => ({ ...value, [proxy.id]: result })) }
-  return <div className="modal-backdrop"><section className="sheet proxy-sheet"><header><div><h2>选择代理服务器</h2><p>{activeProfile ? `当前 Profile：${activeProfile.name} · 点击一行立即切换` : '星标代理会成为新建 Profile 的默认网络'}</p></div><div className="header-actions"><button className="primary compact" onClick={openModal}><Plus />导入代理</button><button className="icon-button" onClick={onClose}><X /></button></div></header>{createError && <p className="error" role="alert">{createError}</p>}<div className="proxy-list">{state.proxies.map((proxy) => { const result = tests[proxy.id]; const selected = activeProfile?.proxyId === proxy.id; const isDefault = (state.defaultProxyId ?? 'system') === proxy.id; const usedByProfiles = state.profiles.filter((profile) => profile.proxyId === proxy.id).length; return <div className={`proxy-row ${selected ? 'selected' : ''} ${activeProfile ? 'selectable' : ''}`} role="button" tabIndex={activeProfile ? 0 : -1} aria-selected={selected} key={proxy.id} onClick={() => activeProfile && onSelect(proxy)} onKeyDown={(event) => { if (activeProfile && (event.key === 'Enter' || event.key === ' ')) onSelect(proxy) }}><span className={`proxy-symbol ${proxy.kind}`}><Network /></span><span className="proxy-detail"><strong>{proxy.favorite && "★ "}{proxy.name}{selected && <em>当前使用</em>}{isDefault && <em>新建默认</em>}</strong><small>{proxy.kind === 'direct' ? '本机网络，不使用代理' : proxy.kind === 'system' ? '自动跟随 macOS 系统代理（如 v2rayN 本地端口）' : `${proxy.kind.toUpperCase()} · ${proxy.host}:${proxy.port}${proxy.kind === 'vless' ? ` · ${proxy.transport || 'tcp'} / ${proxy.security || 'none'}` : ''}`}</small></span><span className={`test-result ${result !== 'testing' && result?.ok ? 'ok' : result !== 'testing' && result ? 'bad' : ''}`}>{result === 'testing' ? <><RefreshCw className="spin" />测试中</> : result ? result.ok ? <><Check />{result.ip} · {result.latency} ms{result.location && <small>{result.location.country} {result.location.city} · {result.location.timezone} · {result.location.locale}</small>}{result.locationWarning && <small>{result.locationWarning}</small>}</> : <><X />{result.error}</> : '尚未测试'}</span><button className="test-button" disabled={result === 'testing'} onClick={(event) => { event.stopPropagation(); void test(proxy) }}>测试</button><button type="button" className="secondary proxy-create" disabled={!!creating} onClick={(event) => { event.stopPropagation(); void create(proxy) }}>{creating === proxy.id ? '创建中…' : '＋ 创建 Profile'}</button><span className="proxy-actions"><button className={`icon-button default-proxy ${isDefault ? 'active' : ''}`} title={isDefault ? '当前是新建默认代理' : '设为新建默认代理'} onClick={(event) => { event.stopPropagation(); updateState({ ...state, defaultProxyId: proxy.id }) }}><Star /></button><button className="icon-button" title={usedByProfiles ? `仍有 ${usedByProfiles} 个 Profile 使用此代理` : '删除代理'} disabled={proxy.id === 'direct' || proxy.id === 'system' || usedByProfiles > 0} onClick={(event) => { event.stopPropagation(); updateState({ ...state, defaultProxyId: state.defaultProxyId === proxy.id ? 'system' : state.defaultProxyId, proxies: state.proxies.filter((item) => item.id !== proxy.id) }) }}><X /></button></span></div> })}</div></section></div>
+
+  const inner = (
+    <>
+      <header className="page-header" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ fontSize: 21, fontWeight: 650, margin: '0 0 6px', color: '#1e293b' }}>代理管理</h2>
+          <p style={{ margin: 0, color: '#64748b', fontSize: 12 }}>{activeProfile ? `当前 Profile：${activeProfile.name} · 点击一行立即切换` : '星标代理会成为新建 Profile 的默认网络'}</p>
+        </div>
+        <div className="header-actions">
+          <button className="primary compact" onClick={openModal}><Plus />导入代理</button>
+        </div>
+      </header>
+      {createError && <p className="error" role="alert">{createError}</p>}
+      <div className="proxy-list" style={{ flex: 1, overflowY: 'auto' }}>
+        {state.proxies.map((proxy) => {
+          const result = tests[proxy.id];
+          const selected = activeProfile?.proxyId === proxy.id;
+          const isDefault = (state.defaultProxyId ?? 'system') === proxy.id;
+          const usedByProfiles = state.profiles.filter((profile) => profile.proxyId === proxy.id).length;
+          return (
+            <div className={`proxy-row ${selected ? 'selected' : ''} ${activeProfile ? 'selectable' : ''}`} role="button" tabIndex={activeProfile ? 0 : -1} aria-selected={selected} key={proxy.id} onClick={() => activeProfile && onSelect(proxy)} onKeyDown={(event) => { if (activeProfile && (event.key === 'Enter' || event.key === ' ')) onSelect(proxy) }}>
+              <span className={`proxy-symbol ${proxy.kind}`}><Network /></span>
+              <span className="proxy-detail">
+                <strong>{proxy.favorite && "★ "}{proxy.name}{selected && <em>当前使用</em>}{isDefault && <em>新建默认</em>}</strong>
+                <small>{proxy.kind === 'direct' ? '本机网络，不使用代理' : proxy.kind === 'system' ? '自动跟随 macOS 系统代理（如 v2rayN 本地端口）' : `${proxy.kind.toUpperCase()} · ${proxy.host}:${proxy.port}${proxy.kind === 'vless' ? ` · ${proxy.transport || 'tcp'} / ${proxy.security || 'none'}` : ''}`}</small>
+              </span>
+              <span className={`test-result ${result !== 'testing' && result?.ok ? 'ok' : result !== 'testing' && result ? 'bad' : ''}`}>
+                {result === 'testing' ? <><RefreshCw className="spin" />测试中</> : result ? result.ok ? <><Check />{result.ip} · {result.latency} ms{result.location && <small>{result.location.country} {result.location.city} · {result.location.timezone} · {result.location.locale}</small>}{result.locationWarning && <small>{result.locationWarning}</small>}</> : <><X />{result.error}</> : '尚未测试'}
+              </span>
+              <button className="test-button" disabled={result === 'testing'} onClick={(event) => { event.stopPropagation(); void test(proxy) }}>测试</button>
+              <button type="button" className="secondary proxy-create" disabled={!!creating} onClick={(event) => { event.stopPropagation(); void create(proxy) }}>{creating === proxy.id ? '创建中…' : '＋ 创建 Profile'}</button>
+              <span className="proxy-actions">
+                <button className={`icon-button default-proxy ${isDefault ? 'active' : ''}`} title={isDefault ? '当前是新建默认代理' : '设为新建默认代理'} onClick={(event) => { event.stopPropagation(); updateState({ ...state, defaultProxyId: proxy.id }) }}><Star /></button>
+                <button className="icon-button" title={usedByProfiles ? `仍有 ${usedByProfiles} 个 Profile 使用此代理` : '删除代理'} disabled={proxy.id === 'direct' || proxy.id === 'system' || usedByProfiles > 0} onClick={(event) => { event.stopPropagation(); updateState({ ...state, defaultProxyId: state.defaultProxyId === proxy.id ? 'system' : state.defaultProxyId, proxies: state.proxies.filter((item) => item.id !== proxy.id) }) }}><X /></button>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+
+  if (isPage) {
+    return <div className="profile-manager proxy-page-container" style={{ position: 'absolute', inset: '56px 20px 18px 248px', display: 'flex', flexDirection: 'column' }}>{inner}</div>
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <section className="sheet proxy-sheet">
+        <header>
+          <div><h2>选择代理服务器</h2><p>{activeProfile ? `当前 Profile：${activeProfile.name} · 点击一行立即切换` : '星标代理会成为新建 Profile 的默认网络'}</p></div>
+          <div className="header-actions"><button className="primary compact" onClick={openModal}><Plus />导入代理</button><button className="icon-button" onClick={onClose}><X /></button></div>
+        </header>
+        {createError && <p className="error" role="alert">{createError}</p>}
+        <div className="proxy-list">
+          {state.proxies.map((proxy) => {
+            const result = tests[proxy.id];
+            const selected = activeProfile?.proxyId === proxy.id;
+            const isDefault = (state.defaultProxyId ?? 'system') === proxy.id;
+            const usedByProfiles = state.profiles.filter((profile) => profile.proxyId === proxy.id).length;
+            return (
+              <div className={`proxy-row ${selected ? 'selected' : ''} ${activeProfile ? 'selectable' : ''}`} role="button" tabIndex={activeProfile ? 0 : -1} aria-selected={selected} key={proxy.id} onClick={() => activeProfile && onSelect(proxy)} onKeyDown={(event) => { if (activeProfile && (event.key === 'Enter' || event.key === ' ')) onSelect(proxy) }}>
+                <span className={`proxy-symbol ${proxy.kind}`}><Network /></span>
+                <span className="proxy-detail">
+                  <strong>{proxy.favorite && "★ "}{proxy.name}{selected && <em>当前使用</em>}{isDefault && <em>新建默认</em>}</strong>
+                  <small>{proxy.kind === 'direct' ? '本机网络，不使用代理' : proxy.kind === 'system' ? '自动跟随 macOS 系统代理（如 v2rayN 本地端口）' : `${proxy.kind.toUpperCase()} · ${proxy.host}:${proxy.port}${proxy.kind === 'vless' ? ` · ${proxy.transport || 'tcp'} / ${proxy.security || 'none'}` : ''}`}</small>
+                </span>
+                <span className={`test-result ${result !== 'testing' && result?.ok ? 'ok' : result !== 'testing' && result ? 'bad' : ''}`}>
+                  {result === 'testing' ? <><RefreshCw className="spin" />测试中</> : result ? result.ok ? <><Check />{result.ip} · {result.latency} ms{result.location && <small>{result.location.country} {result.location.city} · {result.location.timezone} · {result.location.locale}</small>}{result.locationWarning && <small>{result.locationWarning}</small>}</> : <><X />{result.error}</> : '尚未测试'}
+                </span>
+                <button className="test-button" disabled={result === 'testing'} onClick={(event) => { event.stopPropagation(); void test(proxy) }}>测试</button>
+                <button type="button" className="secondary proxy-create" disabled={!!creating} onClick={(event) => { event.stopPropagation(); void create(proxy) }}>{creating === proxy.id ? '创建中…' : '＋ 创建 Profile'}</button>
+                <span className="proxy-actions">
+                  <button className={`icon-button default-proxy ${isDefault ? 'active' : ''}`} title={isDefault ? '当前是新建默认代理' : '设为新建默认代理'} onClick={(event) => { event.stopPropagation(); updateState({ ...state, defaultProxyId: proxy.id }) }}><Star /></button>
+                  <button className="icon-button" title={usedByProfiles ? `仍有 ${usedByProfiles} 个 Profile 使用此代理` : '删除代理'} disabled={proxy.id === 'direct' || proxy.id === 'system' || usedByProfiles > 0} onClick={(event) => { event.stopPropagation(); updateState({ ...state, defaultProxyId: state.defaultProxyId === proxy.id ? 'system' : state.defaultProxyId, proxies: state.proxies.filter((item) => item.id !== proxy.id) }) }}><X /></button>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+    </div>
+  )
 }
 
 function ProxyImporter({ onClose, onImported }: { onClose: () => void; onImported: (nodes: ProxyNode[]) => void }) {

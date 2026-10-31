@@ -119,31 +119,50 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
         const isEditingThis = editingFolderId === folder.id
         const folderProfilesCount = state.profiles.filter(p => p.groupId === folder.id).length
         return (
-          <span className="folder-entry" key={folder.id}>
-            <button className="icon-button" aria-label={`${folder.collapsed ? '展开' : '折叠'} ${folder.name}`} onClick={() => {onOrganize({...state,groups:state.groups.map(g => g.id===folder.id ? {...g,collapsed:!g.collapsed}:g)});setSelected([]);if(group===folder.id)setGroup('')}}>{folder.collapsed ? <ChevronRight size={15}/> : <ChevronDown size={15}/>}</button>
+          <div className={`folder-pill ${group === folder.id ? 'active' : ''}`} key={folder.id}>
+            <button
+              type="button"
+              className="folder-toggle-btn"
+              title={folder.collapsed ? '展开' : '折叠'}
+              onClick={(e) => {
+                e.stopPropagation()
+                onOrganize({
+                  ...state,
+                  groups: state.groups.map(g => g.id === folder.id ? { ...g, collapsed: !g.collapsed } : g)
+                })
+                setSelected([])
+                if (group === folder.id) setGroup('')
+              }}
+            >
+              {folder.collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+            </button>
             {isEditingThis ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <input
-                  autoFocus
-                  style={{ width: 110, padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid #3b82f6', outline: 'none' }}
-                  value={editingFolderName}
-                  onChange={e => setEditingFolderName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handleSaveRename(folder.id)
-                    if (e.key === 'Escape') setEditingFolderId(null)
-                  }}
-                  onBlur={() => handleSaveRename(folder.id)}
-                />
-              </span>
+              <input
+                autoFocus
+                className="folder-rename-input"
+                value={editingFolderName}
+                onChange={e => setEditingFolderName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleSaveRename(folder.id)
+                  if (e.key === 'Escape') setEditingFolderId(null)
+                }}
+                onBlur={() => handleSaveRename(folder.id)}
+              />
             ) : (
-              <button className={`secondary ${group===folder.id?'active':''}`} onClick={() => {setGroup(folder.id);setSelected([])}}>
-                <Folder size={16}/>{folder.name}<small>{folderProfilesCount}</small>
-              </button>
+              <div
+                className="folder-pill-name"
+                onClick={() => { setGroup(folder.id); setSelected([]) }}
+                title={`查看 ${folder.name}`}
+              >
+                <Folder size={14} />
+                <span>{folder.name}</span>
+                <span className="folder-count-badge">{folderProfilesCount}</span>
+              </div>
             )}
-            <span className="group-actions-inline">
+            <div className="folder-pill-actions">
               <button
                 type="button"
-                className="folder-rename-btn"
+                className="folder-action-icon"
                 title="修改分组名称"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -151,21 +170,21 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
                   setEditingFolderName(folder.name)
                 }}
               >
-                <Pencil size={12} />
+                <Pencil size={11} />
               </button>
               <button
                 type="button"
-                className="folder-del-btn"
+                className="folder-action-icon danger"
                 title="删除分组"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleDeleteFolder(folder.id)
                 }}
               >
-                <Trash2 size={12} />
+                <Trash2 size={11} />
               </button>
-            </span>
-          </span>
+            </div>
+          </div>
         )
       })}
       <button className="secondary" onClick={() => setNewFolder(true)}>＋ 新建文件夹</button>

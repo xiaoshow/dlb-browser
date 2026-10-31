@@ -427,9 +427,12 @@ export function GroupWorkspace() {
           </form>
         </header>
 
-        {/* Chrome-Style Permanent Bookmarks Bar ("shoucang一直展示") */}
+        {/* Chrome-Style Permanent Bookmarks Bar ("shoucang一直展示 - 共用收藏") */}
         <div className="arc-chrome-bookmarks-bar">
           <div className="arc-bookmarks-items-row">
+            <span className="arc-shared-badge" title="当前聚合窗口中所有环境共用此套收藏夹">
+              <Star size={11} />共用收藏
+            </span>
             {workspace?.bookmarks && workspace.bookmarks.length > 0 ? (
               workspace.bookmarks.map((bm) => (
                 <button
@@ -453,7 +456,7 @@ export function GroupWorkspace() {
             ) : (
               <div className="arc-bookmarks-empty-hint">
                 <Star size={12} />
-                <span>收藏夹栏（点击地址栏右侧 ⭐ 即可添加收藏）</span>
+                <span>点击地址栏右侧 ⭐ 即可添加收藏（所有环境共用）</span>
               </div>
             )}
           </div>

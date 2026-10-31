@@ -62,9 +62,9 @@ export async function importNativeCookiesToSession(
 
       const isSecure = isSecureStr === '1'
       const isDomain = hostKey.startsWith('.')
-      const host = isDomain ? hostKey.slice(1) : hostKey
+      const cleanHost = hostKey.replace(/^\./, '')
       const scheme = isSecure ? 'https' : 'http'
-      const url = `${scheme}://${host}${path || '/'}`
+      const url = `${scheme}://${cleanHost}${path || '/'}`
 
       const details: Electron.CookiesSetDetails = {
         url,
@@ -74,7 +74,17 @@ export async function importNativeCookiesToSession(
         secure: isSecure,
         httpOnly: isHttpOnlyStr === '1',
       }
-      if (isDomain) details.domain = hostKey
+
+      if (name.startsWith('__Host-')) {
+        details.secure = true
+        delete details.domain
+        details.path = '/'
+      } else if (name.startsWith('__Secure-')) {
+        details.secure = true
+        if (isDomain) details.domain = cleanHost
+      } else if (isDomain) {
+        details.domain = cleanHost
+      }
 
       const expiresUtc = Number(expiresUtcStr)
       if (expiresUtc > 0) {
@@ -108,40 +118,36 @@ export function setupCookieSyncBack(userDataDir: string, profileId: string, ses:
   const db = join(userDataDir, 'native-profiles', profileId, 'Default', 'Cookies')
 
   ses.cookies.on('changed', async (_event, cookie, cause, removed) => {
-    if (cause === 'overwrite') return
+    // 关键保护：绝不因前端单次页面刷新或短暂 session 过期把原生持久 SQLite 中的有效登录凭证误删！
+    if (cause === 'overwrite' || removed) return
     const exists = await access(db).then(() => true).catch(() => false)
     if (!exists) return
 
     try {
-      if (removed) {
-        const sql = `DELETE FROM cookies WHERE host_key='${cookie.domain || ''}' AND name='${cookie.name}' AND path='${cookie.path || '/'}'`
-        await exec('sqlite3', [db, sql]).catch(() => undefined)
-      } else {
-        const encrypted = encryptCookie(cookie.value)
-        const hex = encrypted.toString('hex')
-        const nowUtcMicros = (Math.floor(Date.now() / 1000) + 11644473600) * 1000000
-        const expUtcMicros = cookie.expirationDate
-          ? (Math.floor(cookie.expirationDate) + 11644473600) * 1000000
-          : 0
-        const hostKey = cookie.domain || ''
-        const isSecure = cookie.secure ? 1 : 0
-        const isHttpOnly = cookie.httpOnly ? 1 : 0
-        let sameSite = 0
-        if (cookie.sameSite === 'lax') sameSite = 1
-        else if (cookie.sameSite === 'strict') sameSite = 2
-        else if (cookie.sameSite === 'no_restriction') sameSite = -1
+      const encrypted = encryptCookie(cookie.value)
+      const hex = encrypted.toString('hex')
+      const nowUtcMicros = (Math.floor(Date.now() / 1000) + 11644473600) * 1000000
+      const expUtcMicros = cookie.expirationDate
+        ? (Math.floor(cookie.expirationDate) + 11644473600) * 1000000
+        : 0
+      const hostKey = cookie.domain || ''
+      const isSecure = cookie.secure ? 1 : 0
+      const isHttpOnly = cookie.httpOnly ? 1 : 0
+      let sameSite = 0
+      if (cookie.sameSite === 'lax') sameSite = 1
+      else if (cookie.sameSite === 'strict') sameSite = 2
+      else if (cookie.sameSite === 'no_restriction') sameSite = -1
 
-        const sql = `INSERT OR REPLACE INTO cookies (
-          creation_utc, host_key, top_frame_site_key, name, value, encrypted_value, path,
-          expires_utc, is_secure, is_httponly, last_access_utc, has_expires, is_persistent,
-          priority, samesite, source_scheme, source_port, last_update_utc, source_type, has_cross_site_ancestor
-        ) VALUES (
-          ${nowUtcMicros}, '${hostKey}', '', '${cookie.name}', '', X'${hex}', '${cookie.path || '/'}',
-          ${expUtcMicros}, ${isSecure}, ${isHttpOnly}, ${nowUtcMicros}, ${cookie.expirationDate ? 1 : 0}, ${cookie.expirationDate ? 1 : 0},
-          1, ${sameSite}, ${isSecure ? 2 : 1}, ${isSecure ? 443 : 80}, ${nowUtcMicros}, 0, 0
-        );`
-        await exec('sqlite3', [db, sql]).catch(() => undefined)
-      }
+      const sql = `INSERT OR REPLACE INTO cookies (
+        creation_utc, host_key, top_frame_site_key, name, value, encrypted_value, path,
+        expires_utc, is_secure, is_httponly, last_access_utc, has_expires, is_persistent,
+        priority, samesite, source_scheme, source_port, last_update_utc, source_type, has_cross_site_ancestor
+      ) VALUES (
+        ${nowUtcMicros}, '${hostKey}', '', '${cookie.name}', '', X'${hex}', '${cookie.path || '/'}',
+        ${expUtcMicros}, ${isSecure}, ${isHttpOnly}, ${nowUtcMicros}, ${cookie.expirationDate ? 1 : 0}, ${cookie.expirationDate ? 1 : 0},
+        1, ${sameSite}, ${isSecure ? 2 : 1}, ${isSecure ? 443 : 80}, ${nowUtcMicros}, 0, 0
+      );`
+      await exec('sqlite3', [db, sql]).catch(() => undefined)
     } catch {}
   })
 }
@@ -222,4 +228,99 @@ export async function removeProfileBookmark(
   } catch (err) {
     console.warn(`[Bookmarks] Failed to remove bookmark for ${profileId}:`, err)
   }
+}
+
+/**
+ * 共享/共用收藏夹库 (Shared Workspace Bookmarks)
+ * 所有选中的 Profile 在同窗聚合工作台内共享这一套收藏
+ */
+export async function readSharedBookmarks(userDataDir: string, initialProfileIds: string[] = []): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const list = JSON.parse(raw)
+    if (Array.isArray(list)) return list
+  } catch {}
+
+  // 初始如果为空，尝试从各个选中环境的原生书签中合并出初始共享池
+  const merged: BookmarkItem[] = []
+  const seenUrls = new Set<string>()
+
+  for (const pid of initialProfileIds) {
+    const items = await readProfileBookmarks(userDataDir, pid)
+    for (const it of items) {
+      if (!seenUrls.has(it.url)) {
+        seenUrls.add(it.url)
+        merged.push(it)
+      }
+    }
+  }
+
+  // 默认提供几个常用极客与搜索入口（如尚未有任何书签）
+  if (merged.length === 0) {
+    merged.push(
+      { id: '1', name: 'Google', url: 'https://www.google.com' },
+      { id: '2', name: 'YouTube', url: 'https://www.youtube.com' },
+      { id: '3', name: 'GitHub', url: 'https://github.com' }
+    )
+  }
+
+  try {
+    await writeFile(filePath, JSON.stringify(merged, null, 2), { mode: 0o600 })
+  } catch {}
+  return merged
+}
+
+export async function addSharedBookmark(
+  userDataDir: string,
+  name: string,
+  url: string,
+  mirrorToProfileIds: string[] = []
+): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
+  let list: BookmarkItem[] = []
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) list = parsed
+  } catch {}
+
+  if (!list.some(b => b.url === url)) {
+    list.push({
+      id: randomUUID(),
+      name: name || url,
+      url,
+    })
+    await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
+  }
+
+  // 镜像同步写入各选中的 Profile 自身，确保单独启动时也有此书签
+  for (const pid of mirrorToProfileIds) {
+    await addProfileBookmark(userDataDir, pid, name, url).catch(() => undefined)
+  }
+
+  return list
+}
+
+export async function removeSharedBookmark(
+  userDataDir: string,
+  url: string,
+  mirrorToProfileIds: string[] = []
+): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
+  let list: BookmarkItem[] = []
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) list = parsed
+  } catch {}
+
+  list = list.filter(b => b.url !== url)
+  await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
+
+  for (const pid of mirrorToProfileIds) {
+    await removeProfileBookmark(userDataDir, pid, url).catch(() => undefined)
+  }
+
+  return list
 }

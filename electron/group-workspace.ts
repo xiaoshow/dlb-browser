@@ -7,6 +7,9 @@ import {
   readProfileBookmarks,
   addProfileBookmark,
   removeProfileBookmark,
+  readSharedBookmarks,
+  addSharedBookmark,
+  removeSharedBookmark,
   type BookmarkItem,
 } from './cookie-bridge.js'
 
@@ -50,6 +53,7 @@ export class GroupWorkspaceManager {
   private workspaces = new Map<string, WorkspaceSession>()
   private winToGroupId = new Map<number, string>()
   private profileBookmarks = new Map<string, BookmarkItem[]>()
+  private sharedBookmarks: BookmarkItem[] = []
 
   constructor(
     private getState: () => any,
@@ -82,15 +86,12 @@ export class GroupWorkspaceManager {
   }
 
   getClientState(ws: WorkspaceSession) {
-    const active = ws.tabs.find((t) => t.id === ws.activeTabId)
-    const bookmarks = active ? this.profileBookmarks.get(active.profileId) || [] : []
-
     return {
       groupId: ws.groupId,
       groupName: ws.groupName,
       groupColor: ws.groupColor,
       activeTabId: ws.activeTabId,
-      bookmarks,
+      bookmarks: this.sharedBookmarks,
       tabs: ws.tabs.map((t) => ({
         id: t.id,
         profileId: t.profileId,
@@ -164,6 +165,10 @@ export class GroupWorkspaceManager {
     if (!profiles.length) {
       return { ok: false, error: '该分组内暂无任何 Profile，请先添加环境' }
     }
+
+    // 初始化/加载同窗聚合共用书签池（选上的号共用同一个收藏夹）
+    const initialPids = profiles.map((p: any) => p.id)
+    this.sharedBookmarks = await readSharedBookmarks(app.getPath('userData'), initialPids)
 
     // If workspace already exists for this group, focus and return
     const existing = this.workspaces.get(group.id)
@@ -287,6 +292,10 @@ export class GroupWorkspaceManager {
             headers[k] = chromeBrands
           } else if (lower === 'sec-ch-ua-full-version-list') {
             headers[k] = fullVersion
+          } else if (lower === 'sec-ch-ua-platform') {
+            headers[k] = '"macOS"'
+          } else if (lower === 'sec-ch-ua-mobile') {
+            headers[k] = '?0'
           }
         }
         callback({ requestHeaders: headers })
@@ -315,6 +324,95 @@ export class GroupWorkspaceManager {
         nodeIntegration: false,
         backgroundThrottling: true,
       },
+    })
+
+    // 恢复全套 Chrome 原生快捷键
+    view.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return
+      const isMac = process.platform === 'darwin'
+      const cmdOrCtrl = isMac ? input.meta : input.control
+      const key = input.key.toLowerCase()
+
+      // 1. Reload (Cmd/Ctrl + R, Cmd/Ctrl + Shift + R, F5)
+      if (key === 'r' && cmdOrCtrl && !input.alt) {
+        event.preventDefault()
+        if (input.shift) view.webContents.reloadIgnoringCache()
+        else view.webContents.reload()
+        return
+      }
+      if (key === 'f5') {
+        event.preventDefault()
+        if (input.shift || cmdOrCtrl) view.webContents.reloadIgnoringCache()
+        else view.webContents.reload()
+        return
+      }
+
+      // 2. Navigation Back / Forward (Cmd + [ / Cmd + ], Alt + Left / Alt + Right)
+      if ((cmdOrCtrl && key === '[') || (input.alt && key === 'arrowleft')) {
+        event.preventDefault()
+        if (view.webContents.navigationHistory.canGoBack()) view.webContents.navigationHistory.goBack()
+        return
+      }
+      if ((cmdOrCtrl && key === ']') || (input.alt && key === 'arrowright')) {
+        event.preventDefault()
+        if (view.webContents.navigationHistory.canGoForward()) view.webContents.navigationHistory.goForward()
+        return
+      }
+
+      // 3. Close Tab (Cmd/Ctrl + W)
+      if (key === 'w' && cmdOrCtrl && !input.shift && !input.alt) {
+        event.preventDefault()
+        this.closeTab(ws.groupId, tabId)
+        return
+      }
+
+      // 4. New Tab (Cmd/Ctrl + T)
+      if (key === 't' && cmdOrCtrl && !input.shift && !input.alt) {
+        event.preventDefault()
+        void this.createTabEntry(ws, profile, color, 'https://www.google.com', tabId).then(newTab => {
+          this.switchTab(ws.groupId, newTab.id)
+        })
+        return
+      }
+
+      // 5. DevTools (Cmd/Ctrl + Alt + I, F12)
+      if ((key === 'i' && cmdOrCtrl && input.alt) || key === 'f12') {
+        event.preventDefault()
+        view.webContents.toggleDevTools()
+        return
+      }
+
+      // 6. Zoom (+, -, 0)
+      if (cmdOrCtrl && (key === '=' || key === '+')) {
+        event.preventDefault()
+        const z = view.webContents.getZoomFactor()
+        view.webContents.setZoomFactor(Math.min(3.0, z + 0.1))
+        return
+      }
+      if (cmdOrCtrl && (key === '-' || key === '_')) {
+        event.preventDefault()
+        const z = view.webContents.getZoomFactor()
+        view.webContents.setZoomFactor(Math.max(0.3, z - 0.1))
+        return
+      }
+      if (cmdOrCtrl && key === '0') {
+        event.preventDefault()
+        view.webContents.setZoomFactor(1.0)
+        return
+      }
+
+      // 7. Tab Switching (Control + Tab, Control + Shift + Tab)
+      if (input.control && key === 'tab') {
+        event.preventDefault()
+        const idx = ws.tabs.findIndex(t => t.id === ws.activeTabId)
+        if (idx !== -1 && ws.tabs.length > 1) {
+          const nextIdx = input.shift
+            ? (idx - 1 + ws.tabs.length) % ws.tabs.length
+            : (idx + 1) % ws.tabs.length
+          this.switchTab(ws.groupId, ws.tabs[nextIdx].id)
+        }
+        return
+      }
     })
 
     view.setVisible(false)
@@ -441,16 +539,16 @@ export class GroupWorkspaceManager {
   }
 
   async addBookmark(groupId: string, profileId: string, name: string, url: string) {
-    await addProfileBookmark(app.getPath('userData'), profileId, name, url)
-    await this.ensureBookmarks(profileId)
     const ws = this.workspaces.get(groupId)
+    const pids = ws ? Array.from(new Set(ws.tabs.map(t => t.profileId))) : [profileId]
+    this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), name, url, pids)
     if (ws) this.broadcastState(ws)
   }
 
   async removeBookmark(groupId: string, profileId: string, url: string) {
-    await removeProfileBookmark(app.getPath('userData'), profileId, url)
-    await this.ensureBookmarks(profileId)
     const ws = this.workspaces.get(groupId)
+    const pids = ws ? Array.from(new Set(ws.tabs.map(t => t.profileId))) : [profileId]
+    this.sharedBookmarks = await removeSharedBookmark(app.getPath('userData'), url, pids)
     if (ws) this.broadcastState(ws)
   }
 
