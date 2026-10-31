@@ -119,12 +119,19 @@ export interface WorkspaceTab {
   canGoForward: boolean
 }
 
+export interface BookmarkItem {
+  id?: string
+  name: string
+  url: string
+}
+
 export interface WorkspaceState {
   groupId: string
   groupName: string
   groupColor: string
   tabs: WorkspaceTab[]
   activeTabId: string | null
+  bookmarks?: BookmarkItem[]
 }
 
 export interface BrowserAPI {
@@ -157,6 +164,8 @@ export interface BrowserAPI {
   workspaceReload: (tabId: string) => Promise<void>
   workspaceSetCommandBar: (visible: boolean) => Promise<void>
   workspaceSetProfileColor: (profileId: string, color: string) => Promise<void>
+  workspaceAddBookmark: (profileId: string, name: string, url: string) => Promise<void>
+  workspaceRemoveBookmark: (profileId: string, url: string) => Promise<void>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
 }
 

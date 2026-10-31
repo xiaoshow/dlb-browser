@@ -30,5 +30,7 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   workspaceReload: (tabId) => ipcRenderer.invoke('workspace:reload', tabId),
   workspaceSetCommandBar: (visible) => ipcRenderer.invoke('workspace:set-command-bar', visible),
   workspaceSetProfileColor: (profileId, color) => ipcRenderer.invoke('workspace:set-profile-color', profileId, color),
+  workspaceAddBookmark: (profileId, name, url) => ipcRenderer.invoke('workspace:add-bookmark', profileId, name, url),
+  workspaceRemoveBookmark: (profileId, url) => ipcRenderer.invoke('workspace:remove-bookmark', profileId, url),
   onWorkspaceState: (callback) => { const listener = (_event, state) => callback(state); ipcRenderer.on('workspace:state', listener); return () => ipcRenderer.removeListener('workspace:state', listener) },
 })

@@ -1,7 +1,14 @@
 import { app, BrowserWindow, session, WebContentsView } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { importNativeCookiesToSession, setupCookieSyncBack } from './cookie-bridge.js'
+import {
+  importNativeCookiesToSession,
+  setupCookieSyncBack,
+  readProfileBookmarks,
+  addProfileBookmark,
+  removeProfileBookmark,
+  type BookmarkItem,
+} from './cookie-bridge.js'
 
 export interface TabEntry {
   id: string
@@ -42,6 +49,7 @@ const PROFILE_PALETTE = [
 export class GroupWorkspaceManager {
   private workspaces = new Map<string, WorkspaceSession>()
   private winToGroupId = new Map<number, string>()
+  private profileBookmarks = new Map<string, BookmarkItem[]>()
 
   constructor(
     private getState: () => any,
@@ -74,11 +82,15 @@ export class GroupWorkspaceManager {
   }
 
   getClientState(ws: WorkspaceSession) {
+    const active = ws.tabs.find((t) => t.id === ws.activeTabId)
+    const bookmarks = active ? this.profileBookmarks.get(active.profileId) || [] : []
+
     return {
       groupId: ws.groupId,
       groupName: ws.groupName,
       groupColor: ws.groupColor,
       activeTabId: ws.activeTabId,
+      bookmarks,
       tabs: ws.tabs.map((t) => ({
         id: t.id,
         profileId: t.profileId,
@@ -105,7 +117,8 @@ export class GroupWorkspaceManager {
     if (ws.win.isDestroyed()) return
     const [width, height] = ws.win.getContentSize()
     const sidebarWidth = 250
-    const topBarHeight = 44
+    // 42px Chrome omnibox toolbar + 30px permanent Chrome bookmarks bar
+    const topBarHeight = 72
     const margin = 6
     const contentX = sidebarWidth + margin
     const contentY = topBarHeight + margin
@@ -395,6 +408,26 @@ export class GroupWorkspaceManager {
     return map[hex || ''] || hex || '#8ee2b5'
   }
 
+  async ensureBookmarks(profileId: string): Promise<BookmarkItem[]> {
+    const bms = await readProfileBookmarks(app.getPath('userData'), profileId)
+    this.profileBookmarks.set(profileId, bms)
+    return bms
+  }
+
+  async addBookmark(groupId: string, profileId: string, name: string, url: string) {
+    await addProfileBookmark(app.getPath('userData'), profileId, name, url)
+    await this.ensureBookmarks(profileId)
+    const ws = this.workspaces.get(groupId)
+    if (ws) this.broadcastState(ws)
+  }
+
+  async removeBookmark(groupId: string, profileId: string, url: string) {
+    await removeProfileBookmark(app.getPath('userData'), profileId, url)
+    await this.ensureBookmarks(profileId)
+    const ws = this.workspaces.get(groupId)
+    if (ws) this.broadcastState(ws)
+  }
+
   setProfileColor(groupId: string, profileId: string, color: string) {
     const ws = this.workspaces.get(groupId)
     if (!ws) return
@@ -432,6 +465,9 @@ export class GroupWorkspaceManager {
     }
     this.updateBounds(ws)
     target.view.webContents.focus()
+    void this.ensureBookmarks(target.profileId).then(() => {
+      this.broadcastState(ws)
+    })
     this.broadcastState(ws)
   }
 

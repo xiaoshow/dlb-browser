@@ -10,6 +10,7 @@ import {
   Lock,
   ShieldCheck,
   Palette,
+  Star,
 } from 'lucide-react'
 
 export interface ArcPalette {
@@ -155,6 +156,38 @@ export function GroupWorkspace() {
 
   function handleReload() {
     if (activeTab) void window.profileBrowser?.workspaceReload(activeTab.id)
+  }
+
+  const isBookmarked = Boolean(
+    activeTab &&
+      (workspace?.bookmarks || []).some(
+        (b) => b.url === activeTab.url || (activeTab.url && b.url.startsWith(activeTab.url))
+      )
+  )
+
+  function handleToggleBookmark() {
+    if (!activeTab || !activeTab.url || activeTab.url === 'about:blank') return
+    if (isBookmarked) {
+      void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, activeTab.url)
+    } else {
+      void window.profileBrowser?.workspaceAddBookmark(
+        activeTab.profileId,
+        activeTab.title || activeTab.url,
+        activeTab.url
+      )
+    }
+  }
+
+  function handleBookmarkClick(url: string) {
+    if (!activeTab) return
+    setIsEditingUrl(false)
+    void window.profileBrowser?.workspaceNavigate(activeTab.id, url)
+  }
+
+  function handleRemoveBookmark(e: React.MouseEvent, url: string) {
+    e.stopPropagation()
+    if (!activeTab) return
+    void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, url)
   }
 
   if (!workspace) {
@@ -382,9 +415,49 @@ export function GroupWorkspace() {
                 placeholder="输入网址或 Google 搜索…"
                 spellCheck={false}
               />
+              <button
+                type="button"
+                className={`arc-omnibox-star-btn ${isBookmarked ? 'bookmarked' : ''}`}
+                onClick={handleToggleBookmark}
+                title={isBookmarked ? '已收藏（点击取消收藏）' : '收藏此页面到书签栏'}
+              >
+                <Star size={14} className={isBookmarked ? 'star-filled' : 'star-outline'} />
+              </button>
             </div>
           </form>
         </header>
+
+        {/* Chrome-Style Permanent Bookmarks Bar ("shoucang一直展示") */}
+        <div className="arc-chrome-bookmarks-bar">
+          <div className="arc-bookmarks-items-row">
+            {workspace?.bookmarks && workspace.bookmarks.length > 0 ? (
+              workspace.bookmarks.map((bm) => (
+                <button
+                  key={bm.url}
+                  type="button"
+                  className="arc-bookmark-pill"
+                  onClick={() => handleBookmarkClick(bm.url)}
+                  title={`${bm.name}\n${bm.url}`}
+                >
+                  <Globe size={12} className="arc-bm-icon" />
+                  <span className="arc-bm-name">{bm.name}</span>
+                  <span
+                    className="arc-bm-del"
+                    title="删除此收藏"
+                    onClick={(e) => handleRemoveBookmark(e, bm.url)}
+                  >
+                    ×
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="arc-bookmarks-empty-hint">
+                <Star size={12} />
+                <span>收藏夹栏（点击地址栏右侧 ⭐ 即可添加收藏）</span>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Loading Progress Bar */}
         {activeTab?.loading && (

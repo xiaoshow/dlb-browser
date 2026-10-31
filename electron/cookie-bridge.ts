@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
-import { access } from 'node:fs/promises'
-import crypto from 'node:crypto'
+import { access, readFile, writeFile } from 'node:fs/promises'
+import crypto, { randomUUID } from 'node:crypto'
 import type { Session } from 'electron'
 
 const exec = promisify(execFile)
@@ -144,4 +144,82 @@ export function setupCookieSyncBack(userDataDir: string, profileId: string, ses:
       }
     } catch {}
   })
+}
+
+export interface BookmarkItem {
+  id?: string
+  name: string
+  url: string
+}
+
+export async function readProfileBookmarks(userDataDir: string, profileId: string): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const data = JSON.parse(raw)
+    const children = data?.roots?.bookmark_bar?.children || []
+    return children
+      .filter((c: any) => c && c.type === 'url' && c.url && !c.url.startsWith('file://'))
+      .map((c: any) => ({
+        id: c.id || c.guid,
+        name: c.name || c.url,
+        url: c.url,
+      }))
+  } catch {
+    return []
+  }
+}
+
+export async function addProfileBookmark(
+  userDataDir: string,
+  profileId: string,
+  name: string,
+  url: string
+): Promise<void> {
+  const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
+  try {
+    let data: any = {}
+    try {
+      data = JSON.parse(await readFile(filePath, 'utf8'))
+    } catch {}
+    if (!data.roots) data.roots = {}
+    if (!data.roots.bookmark_bar) {
+      data.roots.bookmark_bar = { children: [], name: 'Bookmarks Bar', type: 'folder' }
+    }
+    if (!Array.isArray(data.roots.bookmark_bar.children)) {
+      data.roots.bookmark_bar.children = []
+    }
+    const exists = data.roots.bookmark_bar.children.some((c: any) => c?.url === url)
+    if (!exists) {
+      data.roots.bookmark_bar.children.push({
+        date_added: String((Date.now() + 11644473600000) * 1000),
+        guid: randomUUID(),
+        id: String(Date.now()),
+        name: name || url,
+        type: 'url',
+        url,
+      })
+      await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
+    }
+  } catch (err) {
+    console.warn(`[Bookmarks] Failed to add bookmark for ${profileId}:`, err)
+  }
+}
+
+export async function removeProfileBookmark(
+  userDataDir: string,
+  profileId: string,
+  url: string
+): Promise<void> {
+  const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const data = JSON.parse(raw)
+    if (Array.isArray(data?.roots?.bookmark_bar?.children)) {
+      data.roots.bookmark_bar.children = data.roots.bookmark_bar.children.filter((c: any) => c?.url !== url)
+      await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
+    }
+  } catch (err) {
+    console.warn(`[Bookmarks] Failed to remove bookmark for ${profileId}:`, err)
+  }
 }

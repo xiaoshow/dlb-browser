@@ -516,6 +516,16 @@ ipcMain.handle('workspace:set-profile-color', (event, profileId: string, color: 
   if (ws) groupWorkspaceManager.setProfileColor(ws.groupId, profileId, color)
   return { ok: true }
 })
+ipcMain.handle('workspace:add-bookmark', async (event, profileId: string, name: string, url: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) await groupWorkspaceManager.addBookmark(ws.groupId, profileId, name, url)
+  return { ok: true }
+})
+ipcMain.handle('workspace:remove-bookmark', async (event, profileId: string, url: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) await groupWorkspaceManager.removeBookmark(ws.groupId, profileId, url)
+  return { ok: true }
+})
 
 ipcMain.handle('proxy:parse-vless', (_event, url: string) => {
   try { return { ok: true, node: parseVlessUrl(url) } }
