@@ -1,5 +1,5 @@
 import { timezoneLabel } from './timezones'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, Play, Square, Fingerprint, Globe2, Settings2, Monitor, Network, RefreshCw, MapPin, Cpu, Link2, ArrowLeftRight, Trash2, Download, Upload, Cookie, Folder, ChevronRight, ChevronDown, Pencil, LayoutGrid } from 'lucide-react'
 import type { AppState, BrowserProfile, ProxyTestResult } from './types'
 import { resolveProfileAvatar } from './notion-avatars'
@@ -105,6 +105,43 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
     setSelected(cur => cur.filter(id => !ids.includes(id)))
     await onDelete(ids)
   }
+
+  // 快捷键支持：Cmd+A / Ctrl+A 全选或反选当前环境列表，Esc 清空选择
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey
+      const target = e.target as HTMLElement | null
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'a') {
+        if (isInput) return // 处于文字输入框中时保留原生全选文字行为
+        e.preventDefault()
+        e.stopPropagation()
+        const allIds = profiles.map(p => p.id)
+        if (allIds.length === 0) return
+        const isAllSelected = allIds.every(id => selected.includes(id))
+        if (isAllSelected) {
+          setSelected([])
+        } else {
+          setSelected(allIds)
+        }
+        return
+      }
+
+      if (e.key === 'Escape' && !isInput && selected.length > 0) {
+        e.preventDefault()
+        setSelected([])
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [profiles, selected])
   return <main className="profile-manager">
     <header className="manager-heading">
       <div><h1>浏览器环境 <span>{state.profiles.length}</span></h1><p>独立窗口，固定配置。每个身份都有自己的空间。</p></div>
@@ -220,7 +257,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       <span/>
       <small><i className="live-dot"/>{running.length} 个运行中</small>
     </div>
-    <div className="manager-table-scroll"><table><thead><tr><th><input type="checkbox" aria-label="选择当前列表" checked={!!profiles.length&&profiles.every(p=>selected.includes(p.id))} onChange={e=>setSelected(e.target.checked?profiles.map(p=>p.id):[])}/></th><th>编号</th><th>名称 / 分组</th><th>别名 / 用途</th><th style={{ minWidth: 165, whiteSpace: 'nowrap' }}>浏览器环境</th><th>代理协议</th><th>出口 IP</th><th>状态</th><th>操作</th></tr></thead><tbody>{profiles.map((p, idx) => {
+    <div className="manager-table-scroll"><table><thead><tr><th><input type="checkbox" aria-label="选择当前列表" title="全选 / 取消全选 (⌘A)" checked={!!profiles.length&&profiles.every(p=>selected.includes(p.id))} onChange={e=>setSelected(e.target.checked?profiles.map(p=>p.id):[])}/></th><th>编号</th><th>名称 / 分组</th><th>别名 / 用途</th><th style={{ minWidth: 165, whiteSpace: 'nowrap' }}>浏览器环境</th><th>代理协议</th><th>出口 IP</th><th>状态</th><th>操作</th></tr></thead><tbody>{profiles.map((p, idx) => {
       const proxy = state.proxies.find(n => n.id === p.proxyId)
       const live = running.includes(p.id)
       const result = tests[p.proxyId]
@@ -290,7 +327,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
         </td>
       </tr>
     })}</tbody></table>{!profiles.length&&<div className="manager-empty"><Fingerprint size={42}/><h3>{state.profiles.length?'没有匹配的环境':'创建你的第一个浏览器环境'}</h3><p>选择一个代理节点，开始独立浏览。</p><button className="primary" onClick={onNew}>＋ 新建 Profile</button></div>}</div>
-    <footer className="manager-footer"><span>已选择 <strong>{selected.length}</strong> 个环境</span><span>共 {profiles.length} 个 <b>1</b></span></footer>
+    <footer className="manager-footer"><span>已选择 <strong>{selected.length}</strong> 个环境 <small style={{ marginLeft: 8, color: '#94a3b8', fontSize: 11 }}>(⌘A 全选)</small></span><span>共 {profiles.length} 个 <b>1</b></span></footer>
     {confirmDeleteIds && <div className="modal-backdrop higher" onClick={() => setConfirmDeleteIds(null)}>
       <section className="sheet rename-sheet" onClick={e => e.stopPropagation()}>
         <header><div><h2>确认删除环境</h2><p>将彻底删除所选 {confirmDeleteIds.length} 个 Profile 及其本地独立 Cookie 与缓存目录</p></div></header>
