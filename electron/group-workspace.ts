@@ -359,14 +359,31 @@ export class GroupWorkspaceManager {
         return
       }
 
-      // 3. Close Tab (Cmd/Ctrl + W)
+      // 3. Focus Address Bar (Cmd/Ctrl + L)
+      if (key === 'l' && cmdOrCtrl && !input.shift && !input.alt) {
+        event.preventDefault()
+        try { ws.win.webContents.send('workspace:focus-omnibox') } catch {}
+        return
+      }
+
+      // 4. Bookmark Current Tab (Cmd/Ctrl + D)
+      if (key === 'd' && cmdOrCtrl && !input.shift && !input.alt) {
+        event.preventDefault()
+        const tab = ws.tabs.find(t => t.id === ws.activeTabId)
+        if (tab && tab.url && tab.url !== 'about:blank') {
+          void this.addBookmark(ws.groupId, tab.profileId, tab.title || tab.url, tab.url)
+        }
+        return
+      }
+
+      // 5. Close Tab (Cmd/Ctrl + W)
       if (key === 'w' && cmdOrCtrl && !input.shift && !input.alt) {
         event.preventDefault()
         this.closeTab(ws.groupId, tabId)
         return
       }
 
-      // 4. New Tab (Cmd/Ctrl + T)
+      // 6. New Tab (Cmd/Ctrl + T)
       if (key === 't' && cmdOrCtrl && !input.shift && !input.alt) {
         event.preventDefault()
         void this.createTabEntry(ws, profile, color, 'https://www.google.com', tabId).then(newTab => {
@@ -375,14 +392,14 @@ export class GroupWorkspaceManager {
         return
       }
 
-      // 5. DevTools (Cmd/Ctrl + Alt + I, F12)
+      // 7. DevTools (Cmd/Ctrl + Alt + I, F12)
       if ((key === 'i' && cmdOrCtrl && input.alt) || key === 'f12') {
         event.preventDefault()
         view.webContents.toggleDevTools()
         return
       }
 
-      // 6. Zoom (+, -, 0)
+      // 8. Zoom (+, -, 0)
       if (cmdOrCtrl && (key === '=' || key === '+')) {
         event.preventDefault()
         const z = view.webContents.getZoomFactor()
@@ -401,7 +418,7 @@ export class GroupWorkspaceManager {
         return
       }
 
-      // 7. Tab Switching (Control + Tab, Control + Shift + Tab)
+      // 9. Tab Switching (Control + Tab, Control + Shift + Tab)
       if (input.control && key === 'tab') {
         event.preventDefault()
         const idx = ws.tabs.findIndex(t => t.id === ws.activeTabId)
@@ -637,7 +654,12 @@ export class GroupWorkspaceManager {
         targetUrl = 'https://www.google.com/search?q=' + encodeURIComponent(targetUrl)
       }
     }
-    void tab.view.webContents.loadURL(targetUrl).catch(() => undefined)
+    tab.url = targetUrl
+    tab.loading = true
+    this.broadcastState(ws)
+    void tab.view.webContents.loadURL(targetUrl).catch((err) => {
+      console.warn(`[Workspace] Navigate error for tab ${tabId}:`, err)
+    })
   }
 
   goBack(groupId: string, tabId: string) {

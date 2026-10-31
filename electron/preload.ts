@@ -33,4 +33,5 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   workspaceAddBookmark: (profileId: string, name: string, url: string) => ipcRenderer.invoke('workspace:add-bookmark', profileId, name, url),
   workspaceRemoveBookmark: (profileId: string, url: string) => ipcRenderer.invoke('workspace:remove-bookmark', profileId, url),
   onWorkspaceState: (callback: (state: any) => void) => { const listener = (_event: Electron.IpcRendererEvent, state: any) => callback(state); ipcRenderer.on('workspace:state', listener); return () => ipcRenderer.removeListener('workspace:state', listener) },
+  onFocusOmnibox: (callback: () => void) => { const listener = () => callback(); ipcRenderer.on('workspace:focus-omnibox', listener); return () => ipcRenderer.removeListener('workspace:focus-omnibox', listener) },
 })

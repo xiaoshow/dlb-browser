@@ -1377,6 +1377,13 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   white-space: nowrap;
 }
 .arc-bm-del {
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
   margin-left: 3px;
   color: #94a3b8;

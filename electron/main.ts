@@ -370,19 +370,208 @@ function createWindow() {
 }
 
 function installMenu() {
-  const send = (channel: string, ...args: unknown[]) => mainWindow?.webContents.send(channel, ...args)
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'DLB Browser', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
-    { label: '文件', submenu: [
-      { label: '新建 Profile', accelerator: 'CommandOrControl+T', click: () => send('shortcut:new-tab') },
-      { type: 'separator' }, { role: 'close' },
-    ] },
-    { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-    { label: '显示', submenu: [
-      { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
-    ] },
-    { label: '窗口', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }] },
-  ]))
+  const getTargetWin = () => BrowserWindow.getFocusedWindow() || mainWindow
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'DLB Browser',
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
+      {
+        label: '文件',
+        submenu: [
+          {
+            label: '新建标签页',
+            accelerator: 'CommandOrControl+T',
+            click: () => {
+              const win = getTargetWin()
+              if (!win) return
+              const ws = groupWorkspaceManager.getWorkspaceByWindow(win)
+              if (ws) {
+                void groupWorkspaceManager.newTab(ws.groupId)
+              } else {
+                win.webContents.send('shortcut:new-tab')
+              }
+            },
+          },
+          {
+            label: '定位地址栏',
+            accelerator: 'CommandOrControl+L',
+            click: () => {
+              const win = getTargetWin()
+              win?.webContents.send('workspace:focus-omnibox')
+            },
+          },
+          {
+            label: '关闭标签页',
+            accelerator: 'CommandOrControl+W',
+            click: () => {
+              const win = getTargetWin()
+              if (!win) return
+              const ws = groupWorkspaceManager.getWorkspaceByWindow(win)
+              if (ws && ws.activeTabId) {
+                groupWorkspaceManager.closeTab(ws.groupId, ws.activeTabId)
+              } else {
+                win.close()
+              }
+            },
+          },
+          { type: 'separator' },
+          { role: 'close' },
+        ],
+      },
+      {
+        label: '编辑',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' },
+        ],
+      },
+      {
+        label: '显示',
+        submenu: [
+          {
+            label: '重新加载',
+            accelerator: 'CommandOrControl+R',
+            click: () => {
+              const win = getTargetWin()
+              if (!win) return
+              const ws = groupWorkspaceManager.getWorkspaceByWindow(win)
+              if (ws && ws.activeTabId) {
+                groupWorkspaceManager.reload(ws.groupId, ws.activeTabId)
+              } else {
+                win.webContents.reload()
+              }
+            },
+          },
+          {
+            label: '强制重新加载',
+            accelerator: 'CommandOrControl+Shift+R',
+            click: () => {
+              const win = getTargetWin()
+              if (!win) return
+              const ws = groupWorkspaceManager.getWorkspaceByWindow(win)
+              const tab = ws?.tabs.find((t) => t.id === ws.activeTabId)
+              if (tab) {
+                tab.view.webContents.reloadIgnoringCache()
+              } else {
+                win.webContents.reloadIgnoringCache()
+              }
+            },
+          },
+          { type: 'separator' },
+          {
+            label: '实际大小',
+            accelerator: 'CommandOrControl+0',
+            click: () => {
+              const win = getTargetWin()
+              const ws = win ? groupWorkspaceManager.getWorkspaceByWindow(win) : undefined
+              const tab = ws?.tabs.find((t) => t.id === ws.activeTabId)
+              if (tab) tab.view.webContents.setZoomFactor(1)
+              else win?.webContents.setZoomFactor(1)
+            },
+          },
+          {
+            label: '放大',
+            accelerator: 'CommandOrControl+=',
+            click: () => {
+              const win = getTargetWin()
+              const ws = win ? groupWorkspaceManager.getWorkspaceByWindow(win) : undefined
+              const tab = ws?.tabs.find((t) => t.id === ws.activeTabId)
+              const target = tab ? tab.view.webContents : win?.webContents
+              if (target) target.setZoomFactor(Math.min(3, target.getZoomFactor() + 0.1))
+            },
+          },
+          {
+            label: '缩小',
+            accelerator: 'CommandOrControl+-',
+            click: () => {
+              const win = getTargetWin()
+              const ws = win ? groupWorkspaceManager.getWorkspaceByWindow(win) : undefined
+              const tab = ws?.tabs.find((t) => t.id === ws.activeTabId)
+              const target = tab ? tab.view.webContents : win?.webContents
+              if (target) target.setZoomFactor(Math.max(0.3, target.getZoomFactor() - 0.1))
+            },
+          },
+          { type: 'separator' },
+          {
+            label: '开发者工具',
+            accelerator: 'Alt+CommandOrControl+I',
+            click: () => {
+              const win = getTargetWin()
+              const ws = win ? groupWorkspaceManager.getWorkspaceByWindow(win) : undefined
+              const tab = ws?.tabs.find((t) => t.id === ws.activeTabId)
+              if (tab) tab.view.webContents.toggleDevTools()
+              else win?.webContents.toggleDevTools()
+            },
+          },
+          { role: 'togglefullscreen' },
+        ],
+      },
+      {
+        label: '历史',
+        submenu: [
+          {
+            label: '后退',
+            accelerator: 'CommandOrControl+[',
+            click: () => {
+              const win = getTargetWin()
+              const ws = win ? groupWorkspaceManager.getWorkspaceByWindow(win) : undefined
+              if (ws && ws.activeTabId) groupWorkspaceManager.goBack(ws.groupId, ws.activeTabId)
+              else if (win?.webContents.canGoBack()) win.webContents.goBack()
+            },
+          },
+          {
+            label: '前进',
+            accelerator: 'CommandOrControl+]',
+            click: () => {
+              const win = getTargetWin()
+              const ws = win ? groupWorkspaceManager.getWorkspaceByWindow(win) : undefined
+              if (ws && ws.activeTabId) groupWorkspaceManager.goForward(ws.groupId, ws.activeTabId)
+              else if (win?.webContents.canGoForward()) win.webContents.goForward()
+            },
+          },
+        ],
+      },
+      {
+        label: '书签',
+        submenu: [
+          {
+            label: '为此标签页添加书签…',
+            accelerator: 'CommandOrControl+D',
+            click: () => {
+              const win = getTargetWin()
+              const ws = win ? groupWorkspaceManager.getWorkspaceByWindow(win) : undefined
+              if (ws && ws.activeTabId) {
+                const tab = ws.tabs.find((t) => t.id === ws.activeTabId)
+                if (tab && tab.url && tab.url !== 'about:blank') {
+                  void groupWorkspaceManager.addBookmark(ws.groupId, tab.profileId, tab.title || tab.url, tab.url)
+                }
+              }
+            },
+          },
+        ],
+      },
+      {
+        label: '窗口',
+        submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }],
+      },
+    ])
+  )
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()

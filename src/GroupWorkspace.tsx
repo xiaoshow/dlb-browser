@@ -67,6 +67,7 @@ export function GroupWorkspace() {
   const [urlInput, setUrlInput] = useState('')
   const [isEditingUrl, setIsEditingUrl] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const omniboxInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // Initial fetch
@@ -178,8 +179,34 @@ export function GroupWorkspace() {
     }
   }
 
+  // 快捷键支持：Cmd+L 聚焦地址栏，Cmd+D 添加/切换收藏
+  useEffect(() => {
+    const focusOmnibox = () => {
+      omniboxInputRef.current?.focus()
+      omniboxInputRef.current?.select()
+    }
+    const unsub = window.profileBrowser?.onFocusOmnibox?.(focusOmnibox)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'l' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        focusOmnibox()
+      }
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'd' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        handleToggleBookmark()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      unsub?.()
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activeTab, isBookmarked])
+
   function handleBookmarkClick(url: string) {
     if (!activeTab) return
+    setUrlInput(url)
     setIsEditingUrl(false)
     void window.profileBrowser?.workspaceNavigate(activeTab.id, url)
   }
@@ -406,6 +433,7 @@ export function GroupWorkspace() {
             <div className="arc-chrome-omnibox">
               <Lock size={13} className="arc-lock-icon" />
               <input
+                ref={omniboxInputRef}
                 type="text"
                 className="arc-chrome-input"
                 value={urlInput}
@@ -419,7 +447,7 @@ export function GroupWorkspace() {
                 type="button"
                 className={`arc-omnibox-star-btn ${isBookmarked ? 'bookmarked' : ''}`}
                 onClick={handleToggleBookmark}
-                title={isBookmarked ? '已收藏（点击取消收藏）' : '收藏此页面到书签栏'}
+                title={isBookmarked ? '已收藏（点击取消收藏）' : '收藏此页面到书签栏 (Cmd+D)'}
               >
                 <Star size={14} className={isBookmarked ? 'star-filled' : 'star-outline'} />
               </button>
@@ -435,23 +463,25 @@ export function GroupWorkspace() {
             </span>
             {workspace?.bookmarks && workspace.bookmarks.length > 0 ? (
               workspace.bookmarks.map((bm) => (
-                <button
+                <div
                   key={bm.url}
-                  type="button"
                   className="arc-bookmark-pill"
                   onClick={() => handleBookmarkClick(bm.url)}
                   title={`${bm.name}\n${bm.url}`}
+                  role="button"
+                  tabIndex={0}
                 >
                   <Globe size={12} className="arc-bm-icon" />
                   <span className="arc-bm-name">{bm.name}</span>
-                  <span
+                  <button
+                    type="button"
                     className="arc-bm-del"
                     title="删除此收藏"
                     onClick={(e) => handleRemoveBookmark(e, bm.url)}
                   >
                     ×
-                  </span>
-                </button>
+                  </button>
+                </div>
               ))
             ) : (
               <div className="arc-bookmarks-empty-hint">

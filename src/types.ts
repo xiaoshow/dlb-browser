@@ -167,6 +167,7 @@ export interface BrowserAPI {
   workspaceAddBookmark: (profileId: string, name: string, url: string) => Promise<void>
   workspaceRemoveBookmark: (profileId: string, url: string) => Promise<void>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
+  onFocusOmnibox?: (callback: () => void) => () => void
 }
 
 declare global {
