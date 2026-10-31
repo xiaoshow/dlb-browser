@@ -172,11 +172,11 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       {group && (
         <button
           type="button"
-          className="btn-workspace-open"
+          className="secondary workspace-btn"
           title="在同一个独立窗口内以多标签聚合打开此分组的所有环境（每个 Profile 独立彩色 Tab，物理隔离不串号）"
           onClick={() => void window.profileBrowser?.openGroupWorkspace(group)}
         >
-          <LayoutGrid size={15} /> 同窗聚合打开本组 ({state.profiles.filter(p => p.groupId === group).length})
+          <LayoutGrid size={14}/>同窗聚合打开本组 ({state.profiles.filter(p => p.groupId === group).length})
         </button>
       )}
       {newFolder && <form onSubmit={e=>{e.preventDefault();const name=folderName.trim();if(!name)return;onOrganize({...state,groups:[...state.groups,{id:crypto.randomUUID(),name,color:'#64748b',collapsed:true}]});setFolderName('');setNewFolder(false)}}><input aria-label="文件夹名称" autoFocus placeholder="例如：偶尔使用" maxLength={40} value={folderName} onChange={e=>setFolderName(e.target.value)}/><button className="secondary" disabled={!folderName.trim()}>创建</button><button type="button" className="secondary" onClick={()=>setNewFolder(false)}>取消</button></form>}
@@ -188,12 +188,12 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(true)}><Square size={16}/>停止</button>
       <button
         type="button"
-        className="btn-workspace-open"
+        className="primary workspace-btn"
         title="在同一个窗口内以多标签聚合打开（每个 Profile 独立彩色 Tab，物理隔离不串号）"
         disabled={!selected.length && !group}
         onClick={() => void window.profileBrowser?.openGroupWorkspace(group || 'all', selected.length ? selected : undefined)}
       >
-        <LayoutGrid size={15} /> 同窗聚合打开{selected.length ? ` (${selected.length})` : group ? '本组' : ''}
+        <LayoutGrid size={16}/>同窗聚合打开{selected.length ? ` (${selected.length})` : group ? ' (本组)' : ''}
       </button>
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>onProtect(selected)}><Fingerprint size={17}/>启用固定保护</button>
       <button className="secondary danger-btn" disabled={!selected.length||!!busy.length} onClick={()=>setConfirmDeleteIds(selected)}><Trash2 size={15}/>删除所选{selected.length ? ` (${selected.length})` : ''}</button>

@@ -696,31 +696,38 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   background: #fee2e2;
   color: #ef4444;
 }
-.btn-workspace-open {
-  height: 36px;
-  background: linear-gradient(135deg, #2563eb, #6366f1);
+.workspace-btn {
+  background: linear-gradient(135deg, #2563eb, #6366f1) !important;
+  border-color: #2563eb !important;
   color: #ffffff !important;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
-  border: none !important;
-  border-radius: 8px;
-  padding: 0 13px;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25) !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-family: inherit !important;
+  letter-spacing: inherit !important;
 }
-.btn-workspace-open:hover:not(:disabled) {
-  filter: brightness(1.08);
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+.workspace-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8, #4f46e5) !important;
+  border-color: #1d4ed8 !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35) !important;
 }
-.btn-workspace-open:disabled {
-  opacity: 0.45;
-  cursor: default;
-  box-shadow: none;
+.workspace-btn:disabled {
+  opacity: 0.42 !important;
+  cursor: default !important;
+  box-shadow: none !important;
+}
+.profile-folders .workspace-btn {
+  background: #eef2ff !important;
+  border: 1px solid #c7d2fe !important;
+  color: #4338ca !important;
+  box-shadow: none !important;
+  padding: 0 11px !important;
+  height: 32px !important;
+  font-size: 12px !important;
+}
+.profile-folders .workspace-btn:hover:not(:disabled) {
+  background: #e0e7ff !important;
+  border-color: #a5b4fc !important;
 }
 .group-actions-inline {
   display: inline-flex;
