@@ -58,7 +58,8 @@
       "dist-electron/chrome-pipe.js",
       "dist-electron/profile-numbers.js",
       "dist-electron/update-center.js",
-      "dist-electron/v2ray-sync.js"
+      "dist-electron/v2ray-sync.js",
+      "dist-electron/group-workspace.js"
     ],
     "extraResources": [
       {

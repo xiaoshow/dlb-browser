@@ -11,6 +11,7 @@ import { assignProfileNumbers } from './profile-numbers.js'
 import { lookupExitLocation, resolveIPEnvironment, type ExitLocation } from './ip-environment.js'
 import { parseVlessUrl } from './vless.js'
 import { killOrphanXray, startXray, stopAllXray, stopXray } from './xray.js'
+import { GroupWorkspaceManager } from './group-workspace.js'
 
 // Avoid macOS Keychain prompts on unsigned/ad-hoc builds.
 app.commandLine.appendSwitch('use-mock-keychain')
@@ -450,6 +451,66 @@ ipcMain.handle('state:load', async () => {
 ipcMain.handle('state:save', (_event, state) => saveState(state))
 ipcMain.handle('profile:runtime', () => runningIds())
 ipcMain.handle('workspace:mode', async () => ({ ok: true }))
+
+const groupWorkspaceManager = new GroupWorkspaceManager(
+  () => appStateCache || defaultState,
+  configureProxy,
+  () => join(dirname, '../electron/preload.cjs'),
+  (groupId) => {
+    if (process.env.VITE_DEV_SERVER_URL) {
+      return { isUrl: true, path: `${process.env.VITE_DEV_SERVER_URL}?mode=workspace&groupId=${encodeURIComponent(groupId)}` }
+    }
+    return { isUrl: false, path: join(dirname, '../dist/index.html') }
+  }
+)
+
+ipcMain.handle('workspace:open-group', async (_event, groupId: string, profileIds?: string[]) => {
+  return groupWorkspaceManager.openGroup(groupId, profileIds)
+})
+ipcMain.handle('workspace:get-state', (event) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  return ws ? groupWorkspaceManager.getClientState(ws) : null
+})
+ipcMain.handle('workspace:switch-tab', (event, tabId: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.switchTab(ws.groupId, tabId)
+  return { ok: true }
+})
+ipcMain.handle('workspace:close-tab', (event, tabId: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.closeTab(ws.groupId, tabId)
+  return { ok: true }
+})
+ipcMain.handle('workspace:new-tab', (event, profileId?: string, url?: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) void groupWorkspaceManager.newTab(ws.groupId, profileId, url)
+  return { ok: true }
+})
+ipcMain.handle('workspace:navigate', (event, tabId: string, url: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.navigate(ws.groupId, tabId, url)
+  return { ok: true }
+})
+ipcMain.handle('workspace:go-back', (event, tabId: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.goBack(ws.groupId, tabId)
+  return { ok: true }
+})
+ipcMain.handle('workspace:go-forward', (event, tabId: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.goForward(ws.groupId, tabId)
+  return { ok: true }
+})
+ipcMain.handle('workspace:reload', (event, tabId: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.reload(ws.groupId, tabId)
+  return { ok: true }
+})
+ipcMain.handle('workspace:set-command-bar', (event, visible: boolean) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.setCommandBar(ws.groupId, visible)
+  return { ok: true }
+})
 
 ipcMain.handle('proxy:parse-vless', (_event, url: string) => {
   try { return { ok: true, node: parseVlessUrl(url) } }

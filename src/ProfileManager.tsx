@@ -1,6 +1,6 @@
 import { timezoneLabel } from './timezones'
 import { useState } from 'react'
-import { Search, Play, Square, Fingerprint, Globe2, Settings2, Monitor, Network, RefreshCw, MapPin, Cpu, Link2, ArrowLeftRight, Trash2, Download, Upload, Cookie, Folder, ChevronRight, ChevronDown } from 'lucide-react'
+import { Search, Play, Square, Fingerprint, Globe2, Settings2, Monitor, Network, RefreshCw, MapPin, Cpu, Link2, ArrowLeftRight, Trash2, Download, Upload, Cookie, Folder, ChevronRight, ChevronDown, Pencil, LayoutGrid } from 'lucide-react'
 import type { AppState, BrowserProfile, ProxyTestResult } from './types'
 import { resolveProfileAvatar } from './notion-avatars'
 
@@ -64,6 +64,8 @@ type Props = {
 export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onEdit, onUpdateAlias, onNew, onProxies, onProtect, onDelete, onCookieModal, onExportProfiles, onImportProfiles }: Props) {
   const [folderName, setFolderName] = useState('')
   const [newFolder, setNewFolder] = useState(false)
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
+  const [editingFolderName, setEditingFolderName] = useState('')
   const [moveTo, setMoveTo] = useState('')
   const [query, setQuery] = useState(''), [group, setGroup] = useState('')
   const [busy, setBusy] = useState<string[]>([]), [selected, setSelected] = useState<string[]>([])
@@ -76,6 +78,26 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
   async function test(id:string) { const proxy=state.proxies.find(p=>p.id===id);if(!proxy || tests[id]==='testing')return;setTests(v=>({...v,[id]:'testing'}));try{const result=await window.profileBrowser!.testProxy(proxy);setTests(v=>({...v,[id]:result}))}catch{setTests(v=>({...v,[id]:{ok:false,error:'检测失败，请重试'}}))} }
   const region = timezoneLabel
   const proxyUseCount = (proxyId: string) => state.profiles.filter(p => p.proxyId === proxyId).length
+
+  function handleSaveRename(folderId: string) {
+    const trimmed = editingFolderName.trim()
+    if (trimmed) {
+      onOrganize({
+        ...state,
+        groups: state.groups.map(g => g.id === folderId ? { ...g, name: trimmed } : g),
+      })
+    }
+    setEditingFolderId(null)
+  }
+
+  function handleDeleteFolder(folderId: string) {
+    if (!window.confirm('确定要删除此分组吗？组内的 Profile 将保留并移至全部环境。')) return
+    const nextGroups = state.groups.filter(g => g.id !== folderId)
+    const nextProfiles = state.profiles.map(p => p.groupId === folderId ? { ...p, groupId: '' } : p)
+    onOrganize({ ...state, groups: nextGroups, profiles: nextProfiles })
+    if (group === folderId) setGroup('')
+  }
+
   async function confirmDelete() {
     if (!confirmDeleteIds?.length) return
     const ids = confirmDeleteIds
@@ -93,11 +115,70 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
     </header>
     <section className="profile-folders" aria-label="Profile 文件夹">
       <button className={`secondary ${!group ? 'active' : ''}`} onClick={() => {setGroup('');setSelected([])}}>全部环境</button>
-      {state.groups.map(folder => <span className="folder-entry" key={folder.id}>
-        <button className="icon-button" aria-label={`${folder.collapsed ? '展开' : '折叠'} ${folder.name}`} onClick={() => {onOrganize({...state,groups:state.groups.map(g => g.id===folder.id ? {...g,collapsed:!g.collapsed}:g)});setSelected([]);if(group===folder.id)setGroup('')}}>{folder.collapsed ? <ChevronRight size={15}/> : <ChevronDown size={15}/>}</button>
-        <button className={`secondary ${group===folder.id?'active':''}`} onClick={() => {setGroup(folder.id);setSelected([])}}><Folder size={16}/>{folder.name}<small>{state.profiles.filter(p=>p.groupId===folder.id).length}</small></button>
-      </span>)}
+      {state.groups.map(folder => {
+        const isEditingThis = editingFolderId === folder.id
+        const folderProfilesCount = state.profiles.filter(p => p.groupId === folder.id).length
+        return (
+          <span className="folder-entry" key={folder.id}>
+            <button className="icon-button" aria-label={`${folder.collapsed ? '展开' : '折叠'} ${folder.name}`} onClick={() => {onOrganize({...state,groups:state.groups.map(g => g.id===folder.id ? {...g,collapsed:!g.collapsed}:g)});setSelected([]);if(group===folder.id)setGroup('')}}>{folder.collapsed ? <ChevronRight size={15}/> : <ChevronDown size={15}/>}</button>
+            {isEditingThis ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  autoFocus
+                  style={{ width: 110, padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid #3b82f6', outline: 'none' }}
+                  value={editingFolderName}
+                  onChange={e => setEditingFolderName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleSaveRename(folder.id)
+                    if (e.key === 'Escape') setEditingFolderId(null)
+                  }}
+                  onBlur={() => handleSaveRename(folder.id)}
+                />
+              </span>
+            ) : (
+              <button className={`secondary ${group===folder.id?'active':''}`} onClick={() => {setGroup(folder.id);setSelected([])}}>
+                <Folder size={16}/>{folder.name}<small>{folderProfilesCount}</small>
+              </button>
+            )}
+            <span className="group-actions-inline">
+              <button
+                type="button"
+                className="folder-rename-btn"
+                title="修改分组名称"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setEditingFolderId(folder.id)
+                  setEditingFolderName(folder.name)
+                }}
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                type="button"
+                className="folder-del-btn"
+                title="删除分组"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDeleteFolder(folder.id)
+                }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </span>
+          </span>
+        )
+      })}
       <button className="secondary" onClick={() => setNewFolder(true)}>＋ 新建文件夹</button>
+      {group && (
+        <button
+          type="button"
+          className="btn-workspace-open"
+          title="在同一个独立窗口内以多标签聚合打开此分组的所有环境（每个 Profile 独立彩色 Tab，物理隔离不串号）"
+          onClick={() => void window.profileBrowser?.openGroupWorkspace(group)}
+        >
+          <LayoutGrid size={15} /> 🪟 同窗聚合打开本组 ({state.profiles.filter(p => p.groupId === group).length})
+        </button>
+      )}
       {newFolder && <form onSubmit={e=>{e.preventDefault();const name=folderName.trim();if(!name)return;onOrganize({...state,groups:[...state.groups,{id:crypto.randomUUID(),name,color:'#64748b',collapsed:true}]});setFolderName('');setNewFolder(false)}}><input aria-label="文件夹名称" autoFocus placeholder="例如：偶尔使用" maxLength={40} value={folderName} onChange={e=>setFolderName(e.target.value)}/><button className="secondary" disabled={!folderName.trim()}>创建</button><button type="button" className="secondary" onClick={()=>setNewFolder(false)}>取消</button></form>}
       <small>折叠的文件夹在全部列表中隐藏；点击文件夹或搜索即可查看，不会自动启动。</small>
     </section>
@@ -105,6 +186,15 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
     <div className="manager-actions">
       <button className="primary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(false)}><Play size={16}/>启动所选</button>
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(true)}><Square size={16}/>停止</button>
+      <button
+        type="button"
+        className="btn-workspace-open"
+        title="在同一个窗口内以多标签聚合打开（每个 Profile 独立彩色 Tab，物理隔离不串号）"
+        disabled={!selected.length && !group}
+        onClick={() => void window.profileBrowser?.openGroupWorkspace(group || 'all', selected.length ? selected : undefined)}
+      >
+        <LayoutGrid size={15} /> 🪟 同窗聚合打开{selected.length ? ` (${selected.length})` : group ? '本组' : ''}
+      </button>
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>onProtect(selected)}><Fingerprint size={17}/>启用固定保护</button>
       <button className="secondary danger-btn" disabled={!selected.length||!!busy.length} onClick={()=>setConfirmDeleteIds(selected)}><Trash2 size={15}/>删除所选{selected.length ? ` (${selected.length})` : ''}</button>
       <select aria-label="移动所选到文件夹" disabled={!selected.length} value={moveTo} onChange={e=>{const id=e.target.value;if(!id)return;onOrganize({...state,profiles:state.profiles.map(p=>selected.includes(p.id)?{...p,groupId:id}:p)});setSelected([]);setMoveTo('')}}><option value="">移动所选到文件夹…</option>{state.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select>

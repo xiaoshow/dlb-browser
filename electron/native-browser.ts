@@ -371,7 +371,11 @@ export class NativeBrowsers {
     if (profile.locale) args.push(`--lang=${profile.locale}`, `--accept-lang=${profile.locale}`)
     if (headless) args.push('--headless=new', '--enable-unsafe-extension-debugging', '--disable-notifications')
     if (proxyRules === 'direct') args.push('--no-proxy-server')
-    else if (proxyRules !== 'system') args.push(`--proxy-server=${proxyRules}`, '--proxy-bypass-list=<-loopback>', '--disable-quic')
+    else if (proxyRules !== 'system') {
+      // Keep loopback proxied by default, except BrowserSkill's local control port.
+      // Chromium evaluates subtractive rules left-to-right: exceptions go last.
+      args.push(`--proxy-server=${proxyRules}`, '--proxy-bypass-list=<-loopback>;127.0.0.1:52800;localhost:52800;[::1]:52800', '--disable-quic')
+    }
     if (profile.webRTCPolicy === 'proxy-only') args.push('--force-webrtc-ip-handling-policy=disable_non_proxied_udp')
     const theme = PROFILE_PALETTE[number % PROFILE_PALETTE.length]
     const extDir = await ensureProfileBadgeExtension(directory, number, profile, proxy, theme.hex)

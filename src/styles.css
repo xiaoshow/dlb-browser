@@ -673,3 +673,479 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
 }
 
 .profile-folders{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}.folder-entry{display:inline-flex;align-items:center;gap:2px}.profile-folders .active{background:#e5edff;color:#2563eb}.profile-folders small{color:#8b97ad}.profile-folders>small{flex-basis:100%;font-size:12px}.profile-folders form{display:flex;gap:6px}.profile-folders input{padding:8px;border:1px solid #d8dfec;border-radius:8px}.manager-actions select{max-width:210px;padding:9px;border:1px solid #d8dfec;border-radius:8px}
+
+/* Folder Renaming & Inline Controls */
+.folder-rename-btn, .folder-del-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+.folder-rename-btn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+.folder-del-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+.btn-workspace-open {
+  background: linear-gradient(135deg, #2563eb, #6366f1);
+  color: #ffffff !important;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(37,99,235,0.25);
+  border: none !important;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-workspace-open:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.group-actions-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+/* Arc-Style Group Workspace Layout & Palette */
+.arc-workspace-root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--arc-bg, #8ee2b5);
+  transition: background-color 0.25s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--arc-text, #173f2d);
+  display: flex;
+}
+
+/* Left Sidebar (250px) */
+.arc-sidebar {
+  width: 250px;
+  min-width: 250px;
+  max-width: 250px;
+  height: 100vh;
+  background: var(--arc-sidebar, #7ce0aa);
+  transition: background-color 0.25s ease;
+  border-right: 1px solid rgba(0, 0, 0, 0.07);
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  -webkit-user-select: none;
+  position: relative;
+  z-index: 20;
+}
+
+/* Top: Traffic Light Padding & Navigation */
+.arc-sidebar-top {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 0;
+  -webkit-app-region: drag;
+}
+.arc-traffic-spacer {
+  width: 78px;
+  flex-shrink: 0;
+}
+.arc-nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  -webkit-app-region: no-drag;
+}
+.arc-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #173f2d;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.arc-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.45);
+}
+.arc-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.arc-nav-btn.spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+/* Search Pill (Omnibox Pill) */
+.arc-search-pill-wrapper {
+  padding: 0 12px;
+  margin: 4px 0 10px 0;
+  -webkit-app-region: no-drag;
+}
+.arc-search-pill {
+  width: 100%;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: #173f2d;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.arc-search-pill:hover {
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+.arc-search-icon {
+  color: #1f4e38;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.arc-search-placeholder {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f4e38;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Profile / Space Title Header */
+.arc-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #153c29;
+}
+.arc-profile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.arc-profile-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.arc-group-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.4);
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #1f4e38;
+}
+
+/* Vertical Tab List */
+.arc-tabs-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 10px;
+  scrollbar-width: none;
+}
+.arc-tabs-list::-webkit-scrollbar {
+  display: none;
+}
+.arc-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1b3d2e;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  position: relative;
+}
+.arc-tab-item:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.arc-tab-item.active {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font-weight: 600;
+  box-shadow: 0 1.5px 5px rgba(0, 0, 0, 0.08);
+}
+.arc-tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.arc-tab-favicon {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.arc-tab-default-icon {
+  flex-shrink: 0;
+}
+.arc-tab-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.arc-tab-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.12s, background 0.12s;
+  padding: 0;
+  flex-shrink: 0;
+}
+.arc-tab-item:hover .arc-tab-close-btn {
+  opacity: 0.65;
+}
+.arc-tab-close-btn:hover {
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.12);
+  color: #0f172a;
+}
+
+/* New Tab Button (Arc Style) */
+.arc-new-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px dashed rgba(255, 255, 255, 0.7);
+  color: #173f2d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all 0.15s ease;
+}
+.arc-new-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: #ffffff;
+}
+
+/* Bottom Spaces Switcher Bar */
+.arc-bottom-bar {
+  height: 48px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+}
+.arc-spaces-pill-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.arc-space-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  border: 1.5px solid transparent;
+  background: rgba(255, 255, 255, 0.35);
+  font-size: 11px;
+  font-weight: 700;
+  color: #173f2d;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.arc-space-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+.arc-space-btn.active {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.arc-space-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.arc-space-num {
+  line-height: 1;
+}
+.arc-space-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.35);
+  color: #173f2d;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.arc-space-add-btn:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* 2. Arc Floating Command Bar (Spotlight Palette) */
+.arc-command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--arc-bg, #8ee2b5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+.arc-command-card {
+  width: 520px;
+  max-width: 90vw;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  animation: arcCardPop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes arcCardPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.arc-command-form {
+  display: flex;
+  flex-direction: column;
+}
+.arc-command-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.arc-command-globe {
+  color: #0f172a;
+  flex-shrink: 0;
+}
+.arc-command-input {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 500;
+  border: none;
+  outline: none;
+  color: #1e293b;
+  background: transparent;
+}
+.arc-command-info-pill {
+  font-size: 11px;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.arc-command-suggestions {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.arc-suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: #334155;
+  transition: all 0.1s ease;
+  width: 100%;
+}
+.arc-suggestion-item:hover,
+.arc-suggestion-item.primary-highlight {
+  background: var(--arc-highlight, #5ba383) !important;
+  color: #ffffff !important;
+}
+.arc-sugg-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.arc-sugg-badge {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* Loading Screen */
+.arc-loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background: #8ee2b5;
+  color: #173f2d;
+  gap: 14px;
+  font-weight: 600;
+}
+.arc-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(23, 63, 45, 0.2);
+  border-top-color: #173f2d;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+

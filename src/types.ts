@@ -105,6 +105,28 @@ export interface ProxyTestResult {
   error?: string
 }
 
+export interface WorkspaceTab {
+  id: string
+  profileId: string
+  profileNumber: number
+  profileName: string
+  color: string
+  url: string
+  title: string
+  favicon?: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
+export interface WorkspaceState {
+  groupId: string
+  groupName: string
+  groupColor: string
+  tabs: WorkspaceTab[]
+  activeTabId: string | null
+}
+
 export interface BrowserAPI {
   scanV2ray: () => Promise<{ nodes: ProxyNode[]; total: number; skipped: number }>
   syncV2ray: (selected: string[]) => Promise<{ state: AppState; added: number; updated: number }>
@@ -124,6 +146,17 @@ export interface BrowserAPI {
   testProxy: (proxy: ProxyNode) => Promise<ProxyTestResult>
   onNewTab: (callback: () => void) => () => void
   onCloseTab: (callback: () => void) => () => void
+  openGroupWorkspace: (groupId: string, profileIds?: string[]) => Promise<{ ok: boolean; error?: string }>
+  workspaceGetState: () => Promise<WorkspaceState | null>
+  workspaceSwitchTab: (tabId: string) => Promise<void>
+  workspaceCloseTab: (tabId: string) => Promise<void>
+  workspaceNewTab: (profileId?: string, url?: string) => Promise<void>
+  workspaceNavigate: (tabId: string, url: string) => Promise<void>
+  workspaceGoBack: (tabId: string) => Promise<void>
+  workspaceGoForward: (tabId: string) => Promise<void>
+  workspaceReload: (tabId: string) => Promise<void>
+  workspaceSetCommandBar: (visible: boolean) => Promise<void>
+  onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
 }
 
 declare global {

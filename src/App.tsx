@@ -6,6 +6,7 @@ import { UpdateCenter } from './UpdateCenter'
 import { stableFingerprint } from './profile-fingerprint'
 import { ProfileManager } from './ProfileManager'
 import { FingerprintSettings } from './FingerprintSettings'
+import { GroupWorkspace } from './GroupWorkspace'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Cloud, Dices, Globe2, Network, Pause, Pencil, Pin, PinOff, Play, Plus, RefreshCw, Settings2, Star, X } from 'lucide-react'
 import type { AppState, BrowserProfile, ProfileGroup, ProxyNode, ProxyTestResult } from './types'
@@ -16,6 +17,11 @@ const colors = ['#ef665f', '#e79b3f', '#44a97b', '#4c8fe6', '#7a68e8', '#cf659e'
 const fallback: AppState = { presentationMode: 'windows', profiles: [], proxies: [{ id: 'system', name: '跟随本机系统代理', kind: 'system' }, { id: 'direct', name: '本机直连（不走代理）', kind: 'direct' }], groups: [{ id: 'group-daily', name: '日常在用', color: '#ef665f' }, { id: 'group-temporary', name: '临时使用', color: '#7a68e8' }], defaultProxyId: 'system' }
 
 function App() {
+  const isWorkspace = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mode') === 'workspace'
+  if (isWorkspace) {
+    return <GroupWorkspace />
+  }
+
   const [state, setState] = useState<AppState>(fallback)
   const [runtimeIds, setRuntimeIds] = useState<string[]>([])
   const [changingMode, setChangingMode] = useState(false)
@@ -239,7 +245,7 @@ function App() {
     {importProfilesOpen && <ProfileImportDialog state={state} onClose={() => setImportProfilesOpen(false)} onImported={(nextState, count) => { updateState(nextState); setImportProfilesOpen(false); setToast(`已成功导入 ${count} 个浏览器环境`) }} />}
     {context && <TabContextMenu profile={state.profiles.find((p) => p.id === context.id)!} paused={pausedIds.includes(context.id)} x={context.x} y={context.y} proxy={state.proxies.find((p) => p.id === state.profiles.find((item) => item.id === context.id)?.proxyId)} onRename={() => { setRenaming(state.profiles.find((p) => p.id === context.id)!); setContext(null) }} onEdit={() => { setEditing(state.profiles.find((p) => p.id === context.id)!); setContext(null) }} onTogglePin={() => { togglePin(context.id); setContext(null) }} onPause={() => { void pauseProfile(context.id); setContext(null) }} onResume={() => { const profile = state.profiles.find((p) => p.id === context.id); if (profile) void openProfile(profile); setContext(null) }} onClose={() => { void closeTab(context.id); setContext(null) }} />}
     {profilePicker && <div className="profile-picker"><header><strong>所有 Profile</strong><span>{state.profiles.length} 个独立环境</span></header><div className="profile-picker-list">{state.profiles.map(profile => <button key={profile.id} onClick={() => { setProfilePicker(false); void openProfile(profile) }}><Avatar profile={profile}/><span><strong>{profile.name}</strong><small>{timezoneLabel(profile.timezone)}</small></span></button>)}</div></div>}
-    {editing && <ProfileEditor profile={editing} proxies={state.proxies} groups={state.groups} onClose={() => setEditing(null)} onSave={saveProfile} />}
+    {editing && <ProfileEditor profile={editing} proxies={state.proxies} groups={state.groups} onClose={() => setEditing(null)} onSave={saveProfile} onUpdateGroups={(nextGroups) => updateState({ ...stateRef.current, groups: nextGroups })} />}
     {renaming && <RenameProfileDialog profile={renaming} onClose={() => setRenaming(null)} onSave={renameProfile} />}
     {newProfileModal && <NewProfileDialog proxies={state.proxies} defaultProxyId={state.defaultProxyId} onClose={() => setNewProfileModal(false)} onCreate={(name, proxyId, avatar, alias) => void createAndOpenTab(name, proxyId, avatar, alias)} />}
     {v2raySyncOpen && <V2raySync state={state} onSaved={updateState} onClose={() => setV2raySyncOpen(false)} />}
@@ -273,16 +279,71 @@ function NewProfileDialog({ proxies, defaultProxyId, onClose, onCreate }: { prox
   return <div className="modal-backdrop higher"><form className="sheet new-profile-sheet" onSubmit={(event) => { event.preventDefault(); if (proxyId) onCreate(name.trim() || selectedProxy?.name || '新环境', proxyId, avatar, alias.trim() || undefined) }}><header><div><h2>新建 Profile</h2><p>创建全新的 Cookie、收藏栏与独立指纹空间</p></div><button type="button" className="icon-button" onClick={onClose}><X /></button></header><div className="sheet-body"><div className="identity-row"><span className="avatar notion-avatar"><img src={avatar} alt="" /></span><label className="field grow"><span>名称（留空则默认与代理同名）</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={selectedProxy?.name || '例如：东京工作环境'} /></label><button type="button" className="image-button" onClick={() => setAvatar(nextNotionAvatar(avatar))}><Dices size={14} />换一个</button></div><label className="field"><span>别名 / 用途备注（可选，会醒目显示在列表与浏览器工具栏）</span><input value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="例如：X主号 / TikTok美区 / PayPal收款" /></label><label className="field"><span>网络</span><select value={proxyId} onChange={(event) => setProxyId(event.target.value)}>{proxies.map((proxy) => <option key={proxy.id} value={proxy.id}>{proxy.name}{proxy.id === defaultProxyId ? ' · 默认' : ''}{proxy.kind === 'direct' ? ' · 直连' : proxy.kind === 'system' ? ' · 本机系统代理' : ` · ${proxy.kind.toUpperCase()}`}</option>)}</select></label><ProxyConnectionCheck proxy={selectedProxy}/><label className="field"><span>时区 / Timezone</span><input readOnly value={timezoneLabel("auto")} /></label>{selectedProxy && <div className="new-profile-summary"><Network /><span><strong>{selectedProxy.name}</strong><small>{selectedProxy.kind === 'direct' ? '不使用代理，直接连接网络' : selectedProxy.kind === 'system' ? '自动跟随 macOS 系统代理（如 v2rayN 本地端口）' : `默认预选 · ${selectedProxy.kind.toUpperCase()} · ${selectedProxy.host}:${selectedProxy.port}`}</small></span></div>}</div><footer><button type="button" className="secondary" onClick={onClose}>取消</button><button type="submit" className="primary" disabled={!proxyId}>创建并打开</button></footer></form></div>
 }
 
-function ProfileEditor({ profile: initial, proxies, groups, onClose, onSave }: { profile: BrowserProfile; proxies: ProxyNode[]; groups: ProfileGroup[]; onClose: () => void; onSave: (profile: BrowserProfile) => void }) {
+function ProfileEditor({ profile: initial, proxies, groups, onClose, onSave, onUpdateGroups }: { profile: BrowserProfile; proxies: ProxyNode[]; groups: ProfileGroup[]; onClose: () => void; onSave: (profile: BrowserProfile) => void; onUpdateGroups?: (groups: ProfileGroup[]) => void }) {
   const [profile, setProfile] = useState(() => ({ ...initial, avatar: resolveProfileAvatar(initial.avatar, (initial.number || 1) - 1) }))
+  const [groupModal, setGroupModal] = useState<{ mode: 'rename' | 'new'; name: string } | null>(null)
   const patch = (value: Partial<BrowserProfile>) => setProfile((current) => ({ ...current, ...value }))
+
+  function handleConfirmGroupModal() {
+    if (!groupModal || !groupModal.name.trim() || !onUpdateGroups) return
+    const trimmed = groupModal.name.trim()
+    if (groupModal.mode === 'rename') {
+      const currentG = groups.find((g) => g.id === profile.groupId)
+      if (currentG) {
+        onUpdateGroups(groups.map((g) => (g.id === currentG.id ? { ...g, name: trimmed } : g)))
+      }
+    } else {
+      const newG: ProfileGroup = { id: crypto.randomUUID(), name: trimmed, color: '#64748b' }
+      onUpdateGroups([...groups, newG])
+      patch({ groupId: newG.id })
+    }
+    setGroupModal(null)
+  }
+
   return <div className="modal-backdrop"><section className="sheet editor-sheet environment-editor"><header><div><h2>Session 环境设置</h2><p>登录态独立保存，环境修改后自动重新载入</p></div><button className="icon-button" onClick={onClose}><X /></button></header><div className="sheet-body"><div className="environment-fields">
     <div className="identity-row"><Avatar profile={profile} /><label className="field grow"><span>名称</span><input autoFocus value={profile.name} onChange={(e) => patch({ name: e.target.value })} /></label><button type="button" className="image-button" onClick={() => patch({ avatar: nextNotionAvatar(profile.avatar) })}><Dices size={14} />换一个</button></div>
     <label className="field"><span>别名 / 用途备注（显示在列表及浏览器顶部红色标识栏）</span><input value={profile.alias ?? ''} onChange={(e) => patch({ alias: e.target.value })} placeholder="例如：X主号 / TikTok美区 / 养号专用" /></label>
     <label className="field"><span>Chiikawa 角色头像（吉伊卡哇系列）</span><div className="notion-avatar-picks">{NOTION_AVATARS.map((item) => <button type="button" key={item.id} title={item.label} className={profile.avatar === item.svg ? 'picked' : ''} onClick={() => patch({ avatar: item.svg })}><img src={item.svg} alt={item.label} /></button>)}</div></label>
     <div className="two-fields"><label className="field"><span>代理</span><select value={profile.proxyId} onChange={(e) => patch({ proxyId: e.target.value })}>{proxies.map((proxy) => <option key={proxy.id} value={proxy.id}>{proxy.name}</option>)}</select></label><label className="field"><span>时区</span><select value={profile.timezone} onChange={(e) => patch({ timezone: e.target.value })}>{timezones.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}</select></label></div>
     <ProxyConnectionCheck proxy={proxies.find(p => p.id === profile.proxyId)} />
-    <div className="two-fields"><label className="field"><span>分组</span><select value={profile.groupId} onChange={(e) => patch({ groupId: e.target.value })}>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><label className="field"><span>打开网址</span><input value={profile.startUrl} onChange={(e) => patch({ startUrl: e.target.value })} /></label></div>
+    <div className="two-fields">
+      <div className="field">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span>分组</span>
+          {onUpdateGroups && (
+            <div style={{ display: 'inline-flex', gap: 10 }}>
+              <button
+                type="button"
+                style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0, fontWeight: 500 }}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const currentG = groups.find((g) => g.id === profile.groupId)
+                  setGroupModal({ mode: 'rename', name: currentG?.name || '' })
+                }}
+              >
+                ✏️ 改名
+              </button>
+              <button
+                type="button"
+                style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0, fontWeight: 500 }}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setGroupModal({ mode: 'new', name: '' })
+                }}
+              >
+                ＋ 新建
+              </button>
+            </div>
+          )}
+        </div>
+        <select value={profile.groupId} onChange={(e) => patch({ groupId: e.target.value })}>
+          {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+        </select>
+      </div>
+      <label className="field"><span>打开网址</span><input value={profile.startUrl} onChange={(e) => patch({ startUrl: e.target.value })} /></label>
+    </div>
     <h3 className="environment-heading">浏览器指纹</h3>
     <div className="two-fields"><label className="field"><span>User-Agent</span><select value={profile.userAgentMode} onChange={(e) => patch({ userAgentMode: e.target.value as 'real' | 'custom' })}><option value="real">Chrome 148 标准内核（推荐·防异常）</option><option value="custom">自定义</option></select></label><label className="field"><span>WebRTC</span><select value={profile.webRTCPolicy ?? 'real'} onChange={(e) => patch({ webRTCPolicy: e.target.value as 'real' | 'proxy-only' })}><option value="real">真实</option><option value="proxy-only">禁止非代理 UDP（防泄露）</option></select></label></div>
     {profile.userAgentMode === 'custom' && <label className="field"><span>自定义 User-Agent</span><textarea value={profile.userAgent ?? ''} onChange={(e) => patch({ userAgent: e.target.value })} /></label>}
@@ -291,7 +352,92 @@ function ProfileEditor({ profile: initial, proxies, groups, onClose, onSave }: {
     <FingerprintSettings profile={profile} patch={patch} />
 
     <label className="field"><span>备注</span><textarea value={profile.notes ?? ''} onChange={(e) => patch({ notes: e.target.value })} placeholder="可选" /></label><div className="reserved"><Cloud /><span><strong>Google Profile</strong><small>已预留，暂未启用</small></span></div>
-  </div>    <aside className="environment-summary"><h3>当前环境摘要</h3><dl><dt>Session</dt><dd>{profile.name}</dd><dt>代理</dt><dd>{proxies.find((proxy) => proxy.id === profile.proxyId)?.name ?? '代理不存在'}</dd><dt>时区</dt><dd>{timezoneLabel(profile.timezone)}</dd><dt>语言</dt><dd>{profile.locale || '跟随系统'}</dd><dt>分辨率</dt><dd>{profile.resolution ? `${profile.resolution.width} × ${profile.resolution.height}` : 'C++ 种子独立微调'}</dd><dt>硬件并发</dt><dd>{profile.hardwareConcurrency ? `${profile.hardwareConcurrency} 核` : '按种子自动伪装 (8-16核)'}</dd><dt>WebRTC</dt><dd>{profile.webRTCPolicy === 'proxy-only' ? '禁止非代理 UDP' : '真实'}</dd><dt>Canvas</dt><dd>{profile.fingerprint?.canvas === 'noise' ? 'C++ 稳定噪声' : '真实'}</dd><dt>WebGL</dt><dd>{profile.fingerprint?.webGL === 'noise' ? 'C++ 稳定噪声 (M1-M4)' : '真实'}</dd><dt>音频</dt><dd>{profile.fingerprint?.audio === 'noise' ? 'C++ 稳定噪声' : '真实'}</dd><dt>内存</dt><dd>{profile.fingerprint?.deviceMemory ? `${profile.fingerprint.deviceMemory} GB` : '按种子自动伪装'}</dd><dt>定位</dt><dd>{profile.fingerprint?.geolocation ? '自定义坐标' : '跟随代理/默认'}</dd><dt>TLS</dt><dd>Chrome 148 原生 BoringSSL</dd><dt>存储</dt><dd>独立持久化 Session</dd></dl></aside></div><footer><button className="secondary" onClick={onClose}>取消</button><button className="primary" disabled={!profile.name.trim() || (profile.userAgentMode === 'custom' && !profile.userAgent?.trim())} onClick={() => onSave(profile)}>保存</button></footer></section></div>
+  </div>    <aside className="environment-summary"><h3>当前环境摘要</h3><dl><dt>Session</dt><dd>{profile.name}</dd><dt>代理</dt><dd>{proxies.find((proxy) => proxy.id === profile.proxyId)?.name ?? '代理不存在'}</dd><dt>时区</dt><dd>{timezoneLabel(profile.timezone)}</dd><dt>语言</dt><dd>{profile.locale || '跟随系统'}</dd><dt>分辨率</dt><dd>{profile.resolution ? `${profile.resolution.width} × ${profile.resolution.height}` : 'C++ 种子独立微调'}</dd><dt>硬件并发</dt><dd>{profile.hardwareConcurrency ? `${profile.hardwareConcurrency} 核` : '按种子自动伪装 (8-16核)'}</dd><dt>WebRTC</dt><dd>{profile.webRTCPolicy === 'proxy-only' ? '禁止非代理 UDP' : '真实'}</dd><dt>Canvas</dt><dd>{profile.fingerprint?.canvas === 'noise' ? 'C++ 稳定噪声' : '真实'}</dd><dt>WebGL</dt><dd>{profile.fingerprint?.webGL === 'noise' ? 'C++ 稳定噪声 (M1-M4)' : '真实'}</dd><dt>音频</dt><dd>{profile.fingerprint?.audio === 'noise' ? 'C++ 稳定噪声' : '真实'}</dd><dt>内存</dt><dd>{profile.fingerprint?.deviceMemory ? `${profile.fingerprint.deviceMemory} GB` : '按种子自动伪装'}</dd><dt>定位</dt><dd>{profile.fingerprint?.geolocation ? '自定义坐标' : '跟随代理/默认'}</dd><dt>TLS</dt><dd>Chrome 148 原生 BoringSSL</dd><dt>存储</dt><dd>独立持久化 Session</dd></dl></aside></div><footer><button className="secondary" onClick={onClose}>取消</button><button className="primary" disabled={!profile.name.trim() || (profile.userAgentMode === 'custom' && !profile.userAgent?.trim())} onClick={() => onSave(profile)}>保存</button></footer>
+    {groupModal && (
+      <div
+        className="modal-backdrop higher"
+        style={{ zIndex: 1000, position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onClick={(e) => {
+          e.stopPropagation()
+          setGroupModal(null)
+        }}
+      >
+        <div
+          className="sheet"
+          style={{
+            maxWidth: 380,
+            width: '90%',
+            padding: '24px',
+            borderRadius: 14,
+            background: '#ffffff',
+            boxShadow: '0 20px 45px rgba(0,0,0,0.3)',
+            border: '1px solid #e2e8f0',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <header style={{ padding: 0, marginBottom: 16, borderBottom: 'none' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1e293b' }}>
+                {groupModal.mode === 'rename' ? '修改分组名称' : '新建环境分组'}
+              </h3>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                {groupModal.mode === 'rename' ? '更新当前分组在所有环境与标签页中的显示名称' : '创建一个新的分组来归类管理你的浏览器环境'}
+              </p>
+            </div>
+          </header>
+          <div style={{ marginBottom: 20 }}>
+            <input
+              autoFocus
+              type="text"
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 8,
+                fontSize: 14,
+                outline: 'none',
+                boxSizing: 'border-box',
+                color: '#1e293b',
+                background: '#f8fafc',
+              }}
+              value={groupModal.name}
+              placeholder="请输入分组名称（例如：谷歌养号组 / 偶尔使用）"
+              onChange={(e) => setGroupModal({ ...groupModal, name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleConfirmGroupModal()
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setGroupModal(null)
+                }
+              }}
+            />
+          </div>
+          <footer style={{ padding: 0, borderTop: 'none', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setGroupModal(null)}
+              style={{ padding: '8px 16px', borderRadius: 8 }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={!groupModal.name.trim()}
+              onClick={handleConfirmGroupModal}
+              style={{ padding: '8px 18px', borderRadius: 8 }}
+            >
+              确定
+            </button>
+          </footer>
+        </div>
+      </div>
+    )}
+  </section></div>
 }
 
 function ProxyManager({ onCreate, state, activeProfile, updateState, onSelect, onClose, openModal }: { onCreate: (proxy: ProxyNode) => Promise<void>; state: AppState; activeProfile?: BrowserProfile; updateState: (state: AppState) => void; onSelect: (proxy: ProxyNode) => void; onClose: () => void; openModal: () => void }) {
