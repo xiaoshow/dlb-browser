@@ -172,7 +172,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       {group && (
         <button
           type="button"
-          className="secondary workspace-btn"
+          className="secondary"
           title="在同一个独立窗口内以多标签聚合打开此分组的所有环境（每个 Profile 独立彩色 Tab，物理隔离不串号）"
           onClick={() => void window.profileBrowser?.openGroupWorkspace(group)}
         >
@@ -188,7 +188,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(true)}><Square size={16}/>停止</button>
       <button
         type="button"
-        className="primary workspace-btn"
+        className="primary"
         title="在同一个窗口内以多标签聚合打开（每个 Profile 独立彩色 Tab，物理隔离不串号）"
         disabled={!selected.length && !group}
         onClick={() => void window.profileBrowser?.openGroupWorkspace(group || 'all', selected.length ? selected : undefined)}
