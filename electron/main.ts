@@ -235,18 +235,27 @@ function xrayBinaryPath() {
 const sessionProxyRules = new WeakMap<Electron.Session, string>()
 
 async function configureProxy(ownerId: string, ses: Electron.Session, proxy: any): Promise<string> {
-  stopXray(ownerId)
-  if (!proxy) throw new Error('Profile 引用的代理不存在；已阻止本机直连')
+  if (!proxy) {
+    stopXray(ownerId)
+    throw new Error('Profile 引用的代理不存在；已阻止本机直连')
+  }
   try {
     let rules: string
-    if (proxy.kind === 'direct') rules = 'direct'
-    else if (proxy.kind === 'system') rules = 'system'
-    else if (proxy.kind === 'socks5') rules = `socks5://${proxy.host}:${proxy.port}`
-    else if (proxy.kind === 'vless') {
+    if (proxy.kind === 'direct') {
+      stopXray(ownerId)
+      rules = 'direct'
+    } else if (proxy.kind === 'system') {
+      stopXray(ownerId)
+      rules = 'system'
+    } else if (proxy.kind === 'socks5') {
+      stopXray(ownerId)
+      rules = `socks5://${proxy.host}:${proxy.port}`
+    } else if (proxy.kind === 'vless') {
       if (!proxy.shareUrl) throw new Error('VLESS 节点缺少分享链接')
       const port = await startXray(ownerId, proxy.shareUrl, app.getPath('userData'), xrayBinaryPath())
       rules = `socks5://127.0.0.1:${port}`
     } else {
+      stopXray(ownerId)
       throw new Error(`不支持的代理类型：${String(proxy.kind)}`)
     }
     const previous = sessionProxyRules.get(ses)
@@ -614,6 +623,7 @@ app.on('before-quit', (event) => {
   quitting = true
   void (async () => {
     await Promise.allSettled([...profileSessionLocks.values()])
+    await groupWorkspaceManager.flushAllSessions()
     await nativeManager?.closeAll()
     stopAllXray()
     await flushState()

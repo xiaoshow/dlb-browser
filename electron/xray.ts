@@ -197,8 +197,21 @@ function scheduleIdleStop(instance: Instance) {
 
 /** Returns the local SOCKS port for this VLESS node, starting Xray only if no profile is using it yet. */
 export async function startXray(ownerId: string, shareUrl: string, userDataPath: string, binaryPath: string) {
-  stopXray(ownerId)
   const key = createHash('sha256').update(shareUrl).digest('hex').slice(0, 16)
+  // 如果当前 ownerId 已经绑定在同一个运行的 Xray 节点上，直接无损返回端口，绝不先 stopXray 造成连接闪断或空置定时器误触发！
+  const existingKey = ownerKeys.get(ownerId)
+  if (existingKey === key) {
+    const active = instances.get(key)
+    if (active && active.child.exitCode === null) {
+      if (active.idleTimer) {
+        clearTimeout(active.idleTimer)
+        active.idleTimer = undefined
+      }
+      active.owners.add(ownerId)
+      return active.port
+    }
+  }
+  stopXray(ownerId)
   ownerKeys.set(ownerId, key)
   let instance = instances.get(key)
   if (!instance || instance.child.exitCode !== null) {

@@ -63,6 +63,7 @@ export class GroupWorkspaceManager {
   private profileBookmarks = new Map<string, BookmarkItem[]>()
   private sharedBookmarks: BookmarkItem[] = []
   private importedProfileCookies = new Set<string>()
+  private initializedSessions = new Map<string, string>()
   private originFaviconCache = new Map<string, string>()
   private faviconsLoaded = false
 
@@ -354,6 +355,8 @@ export class GroupWorkspaceManager {
     win.on('closed', () => {
       this.winToGroupId.delete(win.id)
       this.workspaces.delete(group.id)
+      // 落盘刷新所有已打开环境的 Cookie 和存储，防止旋转更新的 Google Cookie 丢失导致下次启动掉登
+      void this.flushAllSessions()
       // 如果没有其他聚合窗口在跑，清空 Dock 角标并切回默认图标
       if (process.platform === 'darwin' && app.dock && this.workspaces.size === 0) {
         try {
@@ -410,20 +413,32 @@ export class GroupWorkspaceManager {
     return { ok: true }
   }
 
-  private async createTabEntry(
-    ws: WorkspaceSession,
-    profile: any,
-    color: string,
-    initialUrl: string,
-    insertAfterTabId?: string
-  ): Promise<TabEntry> {
-    const tabId = randomUUID()
-    const state = this.getState()
-    const proxy = (state.proxies || []).find((px: any) => px.id === profile.proxyId)
+  async flushAllSessions(): Promise<void> {
+    const profileIds = Array.from(this.initializedSessions.keys())
+    await Promise.allSettled(
+      profileIds.map(async (pid) => {
+        const ses = session.fromPartition(`persist:profile-${pid}`, { cache: true })
+        await ses.cookies.flushStore().catch(() => undefined)
+        ses.flushStorageData()
+      })
+    )
+  }
 
-    // Dedicated partition ensures complete session isolation
-    const partition = `persist:profile-${profile.id}`
-    const ses = session.fromPartition(partition, { cache: true })
+  private async ensureProfileSession(profile: any, ses: Electron.Session, proxy: any): Promise<void> {
+    const proxySignature = JSON.stringify({
+      id: proxy?.id || '',
+      kind: proxy?.kind || 'system',
+      shareUrl: proxy?.shareUrl || '',
+      host: proxy?.host || '',
+      port: proxy?.port || '',
+    })
+
+    // 重要防踢号保护：若当前 Profile 的 Session 已经初始化且代理配置未发生变化，
+    // 绝不在新建标签页 (Cmd+T) 时重复调用 configureProxy / stopXray 或重置 User-Agent，
+    // 从而保证底层 SOCKS5 隧道和 Google HTTP/2 长连接 100% 不断流！
+    if (this.initializedSessions.get(profile.id) === proxySignature) {
+      return
+    }
 
     try {
       await this.configureProxy(profile.id, ses, proxy)
@@ -456,11 +471,32 @@ export class GroupWorkspaceManager {
       this.importedProfileCookies.add(profile.id)
       try {
         const count = await importNativeCookiesToSession(app.getPath('userData'), profile.id, ses)
+        await ses.cookies.flushStore().catch(() => undefined)
         await writeFile(markerFile, JSON.stringify({ migratedAt: new Date().toISOString(), count }), { mode: 0o600 }).catch(() => undefined)
       } catch (e) {
         console.warn(`[Workspace] Cookie import warning for ${profile.name}:`, e)
       }
     }
+
+    this.initializedSessions.set(profile.id, proxySignature)
+  }
+
+  private async createTabEntry(
+    ws: WorkspaceSession,
+    profile: any,
+    color: string,
+    initialUrl: string,
+    insertAfterTabId?: string
+  ): Promise<TabEntry> {
+    const tabId = randomUUID()
+    const state = this.getState()
+    const proxy = (state.proxies || []).find((px: any) => px.id === profile.proxyId)
+
+    // Dedicated partition ensures complete session isolation
+    const partition = `persist:profile-${profile.id}`
+    const ses = session.fromPartition(partition, { cache: true })
+
+    await this.ensureProfileSession(profile, ses, proxy)
 
     const view = new WebContentsView({
       webPreferences: {
@@ -469,6 +505,10 @@ export class GroupWorkspaceManager {
         contextIsolation: true,
         nodeIntegration: false,
         backgroundThrottling: true,
+        // 指纹浏览器防真实 IP 泄漏：当环境配置了 proxy-only 时，严格禁用非代理 UDP WebRTC 流量
+        ...(profile.webRTCPolicy === 'proxy-only'
+          ? { webRTCIPHandlingPolicy: 'disable_non_proxied_udp' as const }
+          : {}),
       },
     })
 
@@ -817,11 +857,25 @@ export class GroupWorkspaceManager {
         const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
         this.profileBookmarks.set(profileId, updated)
       }
-      this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), bookmark.name, bookmark.url, [])
+      this.sharedBookmarks = await addSharedBookmark(
+        app.getPath('userData'),
+        bookmark.name,
+        bookmark.url,
+        [],
+        bookmark.favicon,
+        bookmark.hideTitle
+      )
     } else if (targetScope === 'profile') {
       this.sharedBookmarks = await removeSharedBookmark(app.getPath('userData'), bookmark.url, [])
       if (profileId) {
-        await addProfileBookmark(app.getPath('userData'), profileId, bookmark.name, bookmark.url)
+        await addProfileBookmark(
+          app.getPath('userData'),
+          profileId,
+          bookmark.name,
+          bookmark.url,
+          bookmark.favicon,
+          bookmark.hideTitle
+        )
         const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
         this.profileBookmarks.set(profileId, updated)
       }

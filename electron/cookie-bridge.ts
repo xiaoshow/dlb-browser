@@ -153,7 +153,8 @@ export async function addProfileBookmark(
   profileId: string,
   name: string,
   url: string,
-  favicon?: string
+  favicon?: string,
+  hideTitle?: boolean
 ): Promise<void> {
   const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
   try {
@@ -178,6 +179,7 @@ export async function addProfileBookmark(
         type: 'url',
         url,
         favicon: favicon || undefined,
+        ...(hideTitle !== undefined ? { hideTitle: Boolean(hideTitle) } : {}),
       })
       await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
     } else if (favicon && !target.favicon) {
@@ -244,15 +246,28 @@ export async function reorderProfileBookmarks(
     if (!data.roots) data.roots = {}
     if (!data.roots.bookmark_bar) data.roots.bookmark_bar = { children: [], name: 'Bookmarks Bar', type: 'folder' }
     
-    // 按新顺序重组 children
-    data.roots.bookmark_bar.children = orderedItems.map((item) => ({
-      date_added: String((Date.now() + 11644473600000) * 1000),
-      guid: item.id || randomUUID(),
-      id: item.id || String(Date.now()),
-      name: item.name || item.url,
-      type: 'url',
-      url: item.url,
-    }))
+    // 按新顺序重组 children（完整保留原有的 hideTitle、favicon、date_added 等元数据）
+    const oldChildren: any[] = Array.isArray(data.roots.bookmark_bar.children)
+      ? data.roots.bookmark_bar.children
+      : []
+    data.roots.bookmark_bar.children = orderedItems.map((item) => {
+      const prev = oldChildren.find((c: any) => c?.url === item.url)
+      return {
+        ...(prev || {}),
+        date_added: prev?.date_added || String((Date.now() + 11644473600000) * 1000),
+        guid: item.id || prev?.guid || randomUUID(),
+        id: item.id || prev?.id || String(Date.now()),
+        name: item.name || item.url,
+        type: 'url',
+        url: item.url,
+        ...(item.favicon || prev?.favicon ? { favicon: item.favicon || prev?.favicon } : {}),
+        ...(item.hideTitle !== undefined
+          ? { hideTitle: Boolean(item.hideTitle) }
+          : prev?.hideTitle !== undefined
+            ? { hideTitle: Boolean(prev.hideTitle) }
+            : {}),
+      }
+    })
     await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
   } catch (err) {
     console.warn(`[Bookmarks] Failed to reorder bookmarks for ${profileId}:`, err)
@@ -305,7 +320,8 @@ export async function addSharedBookmark(
   name: string,
   url: string,
   mirrorToProfileIds: string[] = [],
-  favicon?: string
+  favicon?: string,
+  hideTitle?: boolean
 ): Promise<BookmarkItem[]> {
   const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
   let list: BookmarkItem[] = []
@@ -322,6 +338,7 @@ export async function addSharedBookmark(
       name: name || url,
       url,
       favicon: favicon || undefined,
+      ...(hideTitle !== undefined ? { hideTitle: Boolean(hideTitle) } : {}),
     })
     await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
   } else if (favicon && !existing.favicon) {
@@ -331,7 +348,7 @@ export async function addSharedBookmark(
 
   // 镜像同步写入各选中的 Profile 自身，确保单独启动时也有此书签
   for (const pid of mirrorToProfileIds) {
-    await addProfileBookmark(userDataDir, pid, name, url, favicon).catch(() => undefined)
+    await addProfileBookmark(userDataDir, pid, name, url, favicon, hideTitle).catch(() => undefined)
   }
 
   return list
