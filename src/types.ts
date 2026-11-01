@@ -174,6 +174,9 @@ export interface BrowserAPI {
   workspaceUpdateBookmark?: (profileId: string, oldUrl: string, newName: string, newUrl: string, scope?: 'shared' | 'profile') => Promise<{ ok: boolean }>
   workspaceMoveBookmarkScope?: (profileId: string, bookmark: BookmarkItem, targetScope: 'shared' | 'profile') => Promise<{ ok: boolean }>
   workspaceReorderBookmarks?: (profileId: string, bookmarks: BookmarkItem[], scope?: 'shared' | 'profile') => Promise<{ ok: boolean }>
+  workspaceShowBookmarkMenu?: (profileId: string, bookmark: BookmarkItem | null, scope: 'shared' | 'profile') => Promise<{ ok: boolean }>
+  workspaceSetModalActive?: (active: boolean) => Promise<{ ok: boolean }>
+  onTriggerBookmarkAction?: (callback: (payload: { action: string; url?: string; bookmark?: any; scope?: 'shared' | 'profile' }) => void) => () => void
   workspaceMoveTab?: (sourceTabId: string, targetGroupId?: string, pinned?: boolean) => Promise<{ ok: boolean }>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
   onFocusOmnibox?: (callback: () => void) => () => void

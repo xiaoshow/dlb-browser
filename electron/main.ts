@@ -754,6 +754,19 @@ ipcMain.handle(
     return { ok: true }
   }
 )
+ipcMain.handle(
+  'workspace:show-bookmark-menu',
+  async (event, profileId: string, bookmark: any, scope: 'shared' | 'profile') => {
+    const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+    if (ws) groupWorkspaceManager.showBookmarkContextMenu(ws.groupId, profileId, bookmark, scope)
+    return { ok: true }
+  }
+)
+ipcMain.handle('workspace:set-modal-active', async (event, active: boolean) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.setModalActive(ws.groupId, active)
+  return { ok: true }
+})
 ipcMain.handle('workspace:move-tab', (event, sourceTabId: string, targetGroupId?: string, pinned?: boolean) => {
   const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
   if (ws) groupWorkspaceManager.moveTab(ws.groupId, sourceTabId, targetGroupId, pinned)

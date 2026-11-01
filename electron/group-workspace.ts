@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, WebContentsView, nativeImage, Menu } from 'electron'
+import { app, BrowserWindow, session, WebContentsView, nativeImage, Menu, clipboard } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import {
@@ -321,11 +321,12 @@ export class GroupWorkspaceManager {
       this.broadcastState(ws)
     })
 
-    // Initialize tabs: one initial tab per profile
+    // Initialize tabs: one initial tab per profile (严禁隐式并发偷跑 Google 请求)
     for (let i = 0; i < profiles.length; i++) {
       const p = profiles[i]
       const color = p.color || PROFILE_PALETTE[((p.number || i + 1) - 1) % PROFILE_PALETTE.length]
-      await this.createTabEntry(ws, p, color, p.startUrl && p.startUrl !== 'about:blank' ? p.startUrl : 'https://www.google.com')
+      const targetStartUrl = p.startUrl && p.startUrl.trim() ? p.startUrl.trim() : 'about:blank'
+      await this.createTabEntry(ws, p, color, targetStartUrl)
     }
 
     if (ws.tabs.length > 0) {
@@ -356,17 +357,25 @@ export class GroupWorkspaceManager {
       console.warn(`[Workspace] Proxy config warning for ${profile.name}:`, e)
     }
 
-    // Clean user agent: strip "Electron/x.y.z" so Google/Cloudflare doesn't block or drop login!
-    const defaultUa = ses.getUserAgent()
-    const cleanUa = defaultUa.replace(/\s*Electron\/[0-9.]+/gi, '')
-    ses.setUserAgent(profile.userAgentMode === 'custom' && profile.userAgent ? profile.userAgent : cleanUa)
+    // 核心安全防护：将 User-Agent 与 Client Hints 严格对齐原生指纹内核 148.0.7778.215
+    const nativeUa =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.215 Safari/537.36'
+    const targetUa = profile.userAgentMode === 'custom' && profile.userAgent ? profile.userAgent : nativeUa
+    ses.setUserAgent(targetUa)
 
     try {
       ses.webRequest.onBeforeSendHeaders((details, callback) => {
         const headers = { ...details.requestHeaders }
         for (const k of Object.keys(headers)) {
-          if (k.toLowerCase() === 'user-agent') {
-            headers[k] = headers[k].replace(/\s*Electron\/[0-9.]+/gi, '')
+          const kl = k.toLowerCase()
+          if (kl === 'user-agent') {
+            headers[k] = targetUa
+          } else if (kl === 'sec-ch-ua') {
+            headers[k] = '"Chromium";v="148", "Google Chrome";v="148", "Not?A_Brand";v="99"'
+          } else if (kl === 'sec-ch-ua-platform') {
+            headers[k] = '"macOS"'
+          } else if (kl === 'sec-ch-ua-mobile') {
+            headers[k] = '?0'
           }
         }
         callback({ requestHeaders: headers })
@@ -450,7 +459,7 @@ export class GroupWorkspaceManager {
       // 6. New Tab (Cmd/Ctrl + T)
       if (key === 't' && cmdOrCtrl && !input.shift && !input.alt) {
         event.preventDefault()
-        void this.createTabEntry(ws, profile, color, 'https://www.google.com', tabId).then(newTab => {
+        void this.createTabEntry(ws, profile, color, 'about:blank', tabId).then(newTab => {
           this.switchTab(ws.groupId, newTab.id)
         })
         return
@@ -575,7 +584,7 @@ export class GroupWorkspaceManager {
     }
 
     // Strictly inherit color and profileId
-    const newTab = await this.createTabEntry(ws, profile, sourceTab.color, url || 'https://www.google.com', sourceTabId)
+    const newTab = await this.createTabEntry(ws, profile, sourceTab.color, url || 'about:blank', sourceTabId)
     this.switchTab(groupId, newTab.id)
   }
 
@@ -592,7 +601,7 @@ export class GroupWorkspaceManager {
 
     const existingTab = ws.tabs.find((t) => t.profileId === profileId)
     const color = existingTab?.color || profile.color || '#2563eb'
-    const targetUrl = url || (profile.startUrl && profile.startUrl !== 'about:blank' ? profile.startUrl : 'https://www.google.com')
+    const targetUrl = url || (profile.startUrl && profile.startUrl.trim() ? profile.startUrl.trim() : 'about:blank')
 
     const newTab = await this.createTabEntry(ws, profile, color, targetUrl, activeTab?.id)
     this.switchTab(groupId, newTab.id)
@@ -714,6 +723,100 @@ export class GroupWorkspaceManager {
       this.sharedBookmarks = await reorderSharedBookmarks(app.getPath('userData'), bookmarks)
     }
     if (ws) this.broadcastState(ws)
+  }
+
+  setModalActive(groupId: string, active: boolean) {
+    const ws = this.workspaces.get(groupId)
+    if (!ws) return
+    const activeTab = ws.tabs.find((t) => t.id === ws.activeTabId)
+    if (activeTab) {
+      activeTab.view.setVisible(!active)
+    }
+  }
+
+  showBookmarkContextMenu(
+    groupId: string,
+    profileId: string,
+    bookmark: BookmarkItem | null,
+    scope: 'shared' | 'profile'
+  ) {
+    const ws = this.workspaces.get(groupId)
+    if (!ws || ws.win.isDestroyed()) return
+
+    if (bookmark) {
+      const menu = Menu.buildFromTemplate([
+        {
+          label: '在当前标签打开',
+          click: () => {
+            ws.win.webContents.send('workspace:trigger-bookmark', {
+              action: 'open',
+              url: bookmark.url,
+            })
+          },
+        },
+        {
+          label: '在新标签页打开',
+          click: () => {
+            ws.win.webContents.send('workspace:trigger-bookmark', {
+              action: 'new-tab',
+              url: bookmark.url,
+            })
+          },
+        },
+        { type: 'separator' },
+        scope === 'shared'
+          ? {
+              label: '转为专属收藏（当前号独享）',
+              click: () => {
+                void this.moveBookmarkScope(groupId, profileId, bookmark, 'profile')
+              },
+            }
+          : {
+              label: '转为公共收藏（所有号可见）',
+              click: () => {
+                void this.moveBookmarkScope(groupId, profileId, bookmark, 'shared')
+              },
+            },
+        { type: 'separator' },
+        {
+          label: '编辑…',
+          click: () => {
+            ws.win.webContents.send('workspace:trigger-bookmark', {
+              action: 'edit',
+              bookmark,
+              scope,
+            })
+          },
+        },
+        {
+          label: '复制网址',
+          click: () => {
+            clipboard.writeText(bookmark.url)
+          },
+        },
+        { type: 'separator' },
+        {
+          label: '删除',
+          click: () => {
+            void this.removeBookmark(groupId, profileId, bookmark.url, scope)
+          },
+        },
+      ])
+      menu.popup({ window: ws.win })
+    } else {
+      const menu = Menu.buildFromTemplate([
+        {
+          label: `添加${scope === 'shared' ? '公共' : '专属'}书签…`,
+          click: () => {
+            ws.win.webContents.send('workspace:trigger-bookmark', {
+              action: 'add',
+              scope,
+            })
+          },
+        },
+      ])
+      menu.popup({ window: ws.win })
+    }
   }
 
   setProfileColor(groupId: string, profileId: string, color: string) {

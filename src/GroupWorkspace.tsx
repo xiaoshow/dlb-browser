@@ -129,10 +129,27 @@ export function GroupWorkspace() {
       }
     })
 
+    // 监听原生右键菜单触发的动作
+    const unsubTrigger = window.profileBrowser?.onTriggerBookmarkAction?.((payload) => {
+      if (payload.action === 'open' && payload.url) {
+        if (!activeTab) return
+        setUrlInput(payload.url)
+        setIsEditingUrl(false)
+        void window.profileBrowser?.workspaceNavigate(activeTab.id, payload.url)
+      } else if (payload.action === 'new-tab' && payload.url) {
+        if (activeTab) void window.profileBrowser?.workspaceNewTab(activeTab.profileId, payload.url)
+      } else if (payload.action === 'edit' && payload.bookmark) {
+        handleOpenEditModal(payload.bookmark, payload.scope || 'shared')
+      } else if (payload.action === 'add') {
+        handleOpenEditModal(null, payload.scope || 'shared')
+      }
+    })
+
     return () => {
       if (unsubscribe) unsubscribe()
+      if (unsubTrigger) unsubTrigger()
     }
-  }, [isEditingUrl])
+  }, [isEditingUrl, activeTab])
 
   const activeTab = workspace?.tabs.find((t) => t.id === workspace.activeTabId)
 
@@ -250,8 +267,19 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceNewTab(activeTab.profileId, url)
   }
 
+  function handleShowBookmarkContextMenu(
+    e: React.MouseEvent,
+    bm: { name: string; url: string } | null,
+    scope: 'shared' | 'profile'
+  ) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!activeTab) return
+    void window.profileBrowser?.workspaceShowBookmarkMenu?.(activeTab.profileId, bm, scope)
+  }
+
   function handleOpenEditModal(bm: { name: string; url: string } | null, scope: 'shared' | 'profile') {
-    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
+    void window.profileBrowser?.workspaceSetModalActive?.(true)
     if (bm) {
       setEditModal({
         open: true,
@@ -271,6 +299,11 @@ export function GroupWorkspace() {
         scope,
       })
     }
+  }
+
+  function handleCloseEditModal() {
+    void window.profileBrowser?.workspaceSetModalActive?.(false)
+    setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
   }
 
   function handleSaveEditModal() {
@@ -294,7 +327,7 @@ export function GroupWorkspace() {
         )
       }
     }
-    setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
+    handleCloseEditModal()
   }
 
   function handleMoveScope(bm: { name: string; url: string }, targetScope: 'shared' | 'profile') {
@@ -664,10 +697,7 @@ export function GroupWorkspace() {
             }}
             onDragLeave={() => setIsDragOverShared(false)}
             onDrop={(e) => handleBarDrop(e, 'shared')}
-            onContextMenu={(e) => {
-              e.preventDefault()
-              setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: null, scope: 'shared' })
-            }}
+            onContextMenu={(e) => handleShowBookmarkContextMenu(e, null, 'shared')}
             title="公共收藏区：组内所有号共用。拖拽小锁至此可添加公共书签"
           >
             <span className="arc-shared-badge">
@@ -690,11 +720,7 @@ export function GroupWorkspace() {
                     }}
                     onDrop={(e) => handleBookmarkDropOnIndex(e, idx, 'shared')}
                     onClick={() => handleBookmarkClick(bm.url)}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: bm, scope: 'shared' })
-                    }}
+                    onContextMenu={(e) => handleShowBookmarkContextMenu(e, bm, 'shared')}
                     title={`${cleanName}\n${bm.url}\n（🌐公共收藏 · 右键可转为本号专属）`}
                     role="button"
                     tabIndex={0}
@@ -731,10 +757,7 @@ export function GroupWorkspace() {
               }}
               onDragLeave={() => setIsDragOverProfile(false)}
               onDrop={(e) => handleBarDrop(e, 'profile')}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: null, scope: 'profile' })
-              }}
+              onContextMenu={(e) => handleShowBookmarkContextMenu(e, null, 'profile')}
               title={`专属收藏区：仅 #${activeTab.profileNumber} ${activeTab.profileName} 独享`}
             >
               <span
@@ -765,11 +788,7 @@ export function GroupWorkspace() {
                       }}
                       onDrop={(e) => handleBookmarkDropOnIndex(e, idx, 'profile')}
                       onClick={() => handleBookmarkClick(bm.url)}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: bm, scope: 'profile' })
-                      }}
+                      onContextMenu={(e) => handleShowBookmarkContextMenu(e, bm, 'profile')}
                       title={`${cleanName}\n${bm.url}\n（👤#${activeTab.profileNumber}专属 · 右键可转为公共）`}
                       role="button"
                       tabIndex={0}
@@ -802,125 +821,16 @@ export function GroupWorkspace() {
         )}
       </main>
 
-      {/* 原生 Chrome 体验的书签右键菜单 (Context Menu) */}
-      {contextMenu.visible && (
-        <div
-          className="arc-chrome-context-menu"
-          style={{ left: Math.min(contextMenu.x, window.innerWidth - 200), top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {contextMenu.bookmark ? (
-            <>
-              <button
-                type="button"
-                className="arc-context-item"
-                onClick={() => {
-                  if (contextMenu.bookmark) handleBookmarkClick(contextMenu.bookmark.url)
-                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
-                }}
-              >
-                <Globe size={13} />
-                <span>在当前标签打开</span>
-              </button>
-              <button
-                type="button"
-                className="arc-context-item"
-                onClick={() => {
-                  if (contextMenu.bookmark) handleNewTabWithUrl(contextMenu.bookmark.url)
-                }}
-              >
-                <ExternalLink size={13} />
-                <span>在新标签页打开</span>
-              </button>
-              <div className="arc-context-divider" />
-              {/* 一键切换归属：公共 vs 专属 */}
-              {contextMenu.scope === 'shared' ? (
-                <button
-                  type="button"
-                  className="arc-context-item"
-                  onClick={() => {
-                    if (contextMenu.bookmark) handleMoveScope(contextMenu.bookmark, 'profile')
-                  }}
-                  title="将此书签移入当前环境专属收藏"
-                >
-                  <ArrowRightLeft size={13} />
-                  <span>转为 #{activeTab?.profileNumber} 专属收藏</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="arc-context-item"
-                  onClick={() => {
-                    if (contextMenu.bookmark) handleMoveScope(contextMenu.bookmark, 'shared')
-                  }}
-                  title="将此书签移入公共收藏，供所有号共用"
-                >
-                  <ArrowRightLeft size={13} />
-                  <span>转为公共收藏（所有号可见）</span>
-                </button>
-              )}
-              <div className="arc-context-divider" />
-              <button
-                type="button"
-                className="arc-context-item"
-                onClick={() => handleOpenEditModal(contextMenu.bookmark, contextMenu.scope)}
-              >
-                <Edit2 size={13} />
-                <span>编辑…</span>
-              </button>
-              <button
-                type="button"
-                className="arc-context-item"
-                onClick={() => {
-                  if (contextMenu.bookmark) handleCopyUrl(contextMenu.bookmark.url)
-                }}
-              >
-                <Copy size={13} />
-                <span>复制网址</span>
-              </button>
-              <div className="arc-context-divider" />
-              <button
-                type="button"
-                className="arc-context-item text-danger"
-                onClick={(e) => {
-                  if (contextMenu.bookmark) handleRemoveBookmark(e, contextMenu.bookmark.url, contextMenu.scope)
-                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
-                }}
-              >
-                <Trash2 size={13} />
-                <span>删除</span>
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="arc-context-item"
-              onClick={() => handleOpenEditModal(null, contextMenu.scope)}
-            >
-              <Plus size={13} />
-              <span>添加{contextMenu.scope === 'shared' ? '公共' : '专属'}书签…</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* 编辑书签模态对话框 (Modal) */}
+      {/* 编辑书签模态对话框 (Modal) - 原生居中无遮挡 */}
       {editModal.open && (
-        <div
-          className="arc-modal-overlay"
-          onClick={() =>
-            setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
-          }
-        >
+        <div className="arc-modal-overlay" onClick={handleCloseEditModal}>
           <div className="arc-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="arc-modal-header">
               <span className="arc-modal-title">{editModal.isNew ? '添加书签' : '编辑书签'}</span>
               <button
                 type="button"
                 className="arc-modal-close"
-                onClick={() =>
-                  setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
-                }
+                onClick={handleCloseEditModal}
               >
                 ×
               </button>
