@@ -628,6 +628,102 @@ export class GroupWorkspaceManager {
         }
         return
       }
+
+      // 10. Quick Tab Switching (Cmd/Ctrl + 1..9, Chrome native rule)
+      if (cmdOrCtrl && !input.shift && !input.alt && /^[1-9]$/.test(key)) {
+        event.preventDefault()
+        const digit = parseInt(key, 10)
+        if (digit === 9) {
+          if (ws.tabs.length > 0) {
+            this.switchTab(ws.groupId, ws.tabs[ws.tabs.length - 1].id)
+          }
+        } else {
+          const targetIndex = digit - 1
+          if (targetIndex < ws.tabs.length) {
+            this.switchTab(ws.groupId, ws.tabs[targetIndex].id)
+          }
+        }
+        return
+      }
+    })
+
+    // 遵循 Chrome 原生网页右键上下文菜单规则
+    view.webContents.on('context-menu', (_e, params) => {
+      if (ws.win.isDestroyed()) return
+      const template: Electron.MenuItemConstructorOptions[] = []
+
+      // 链接上下文
+      if (params.linkURL) {
+        template.push(
+          {
+            label: '在当前标签页打开',
+            click: () => void view.webContents.loadURL(params.linkURL),
+          },
+          {
+            label: '在新标签页中打开链接',
+            click: () => void this.createAdjacentTab(ws.groupId, tabId, params.linkURL),
+          },
+          {
+            label: '复制链接地址',
+            click: () => clipboard.writeText(params.linkURL),
+          },
+          { type: 'separator' }
+        )
+      }
+
+      // 选中文本上下文
+      if (params.selectionText && params.selectionText.trim()) {
+        const query = params.selectionText.trim()
+        const displayQuery = query.length > 20 ? query.slice(0, 20) + '…' : query
+        template.push(
+          { role: 'copy', label: '复制' },
+          {
+            label: `在 Google 上搜索“${displayQuery}”`,
+            click: () => void this.createAdjacentTab(ws.groupId, tabId, `https://www.google.com/search?q=${encodeURIComponent(query)}`),
+          },
+          { type: 'separator' }
+        )
+      }
+
+      // 可编辑输入框上下文
+      if (params.isEditable) {
+        template.push(
+          { role: 'undo', label: '撤销' },
+          { role: 'redo', label: '重做' },
+          { type: 'separator' },
+          { role: 'cut', label: '剪切' },
+          { role: 'copy', label: '复制' },
+          { role: 'paste', label: '粘贴' },
+          { role: 'selectAll', label: '全选' },
+          { type: 'separator' }
+        )
+      }
+
+      // 常规导航与检查元素
+      template.push(
+        {
+          label: '后退',
+          enabled: view.webContents.canGoBack(),
+          click: () => view.webContents.goBack(),
+        },
+        {
+          label: '前进',
+          enabled: view.webContents.canGoForward(),
+          click: () => view.webContents.goForward(),
+        },
+        {
+          label: '重新加载',
+          click: () => view.webContents.reload(),
+        },
+        { type: 'separator' },
+        {
+          label: '检查',
+          click: () => view.webContents.inspectElement(params.x, params.y),
+        }
+      )
+
+      const menu = Menu.buildFromTemplate(template)
+      menu.popup({ window: ws.win })
     })
 
     view.setVisible(false)
@@ -1134,7 +1230,9 @@ export class GroupWorkspaceManager {
     let targetUrl = rawUrl.trim()
     if (!targetUrl) return
     if (!/^https?:\/\//i.test(targetUrl) && !/^about:/i.test(targetUrl)) {
-      if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
+      if (targetUrl.startsWith('localhost') || targetUrl.startsWith('127.0.0.1') || /^[\w.-]+:\d+$/.test(targetUrl)) {
+        targetUrl = 'http://' + targetUrl
+      } else if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
         targetUrl = 'https://' + targetUrl
       } else {
         targetUrl = 'https://www.google.com/search?q=' + encodeURIComponent(targetUrl)

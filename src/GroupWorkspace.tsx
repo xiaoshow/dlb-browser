@@ -695,24 +695,40 @@ export function GroupWorkspaceInner() {
 
             return (
               <div key={p.id} className="arc-profile-section">
-                {/* Profile Section Header 标题分割栏 */}
-                <div className={`arc-section-header ${isProfileActive ? 'active-section' : ''}`}>
-                  <span className="arc-section-dot" style={{ backgroundColor: pTheme.dot }} />
-                  <span className="arc-section-name">
-                    #{p.number} {p.name}
+                {/* Profile Section Header 优雅分组标签卡片 */}
+                <div
+                  className={`arc-section-header ${isProfileActive ? 'active-section' : ''}`}
+                  onClick={() => {
+                    const firstTab = profileTabs[0]
+                    if (firstTab) handleSwitchTab(firstTab.id)
+                  }}
+                  title={`切换到 #${p.number} ${p.name}`}
+                >
+                  <span className="arc-section-indicator" style={{ backgroundColor: pTheme.dot }} />
+                  <span
+                    className="arc-section-badge"
+                    style={{ backgroundColor: `${pTheme.dot}28`, color: pTheme.highlight }}
+                  >
+                    #{p.number}
                   </span>
-                  <span className="arc-section-count">{profileTabs.length}</span>
+                  <span className="arc-section-name">{p.name}</span>
+                  <span className="arc-section-count" title={`${profileTabs.length} 个标签页`}>
+                    {profileTabs.length}
+                  </span>
                   <button
                     type="button"
                     className="arc-section-add-btn"
                     title={`为 #${p.number} ${p.name} 新开标签页`}
-                    onClick={() => handleNewTabForProfile(p.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleNewTabForProfile(p.id)
+                    }}
                   >
-                    <Plus size={13} />
+                    <Plus size={12} />
                   </button>
                 </div>
 
-                {/* 该 Profile 下的具体标签列表 */}
+                {/* 该 Profile 下的具体标签列表（带层级指引） */}
                 <div className="arc-section-tabs">
                   {profileTabs.map((tab) => {
                     const isActive = tab.id === workspace.activeTabId
@@ -721,7 +737,7 @@ export function GroupWorkspaceInner() {
                         key={tab.id}
                         className={`arc-tab-item ${isActive ? 'active' : ''}`}
                         onClick={() => handleSwitchTab(tab.id)}
-                        title={`${tab.profileName} · ${tab.title || tab.url}`}
+                        title={`${tab.title || tab.profileName}\n${tab.url}`}
                       >
                         <span className="arc-tab-dot" style={{ backgroundColor: pTheme.dot }} />
                         {tab.favicon ? (
@@ -736,9 +752,7 @@ export function GroupWorkspaceInner() {
                         ) : (
                           <Globe size={13} className="arc-tab-default-icon" style={{ color: pTheme.highlight }} />
                         )}
-                        <span className="arc-tab-title">
-                          <strong>#{tab.profileNumber}</strong> {tab.title || tab.profileName}
-                        </span>
+                        <span className="arc-tab-title">{tab.title || tab.profileName}</span>
                         <button
                           type="button"
                           className="arc-tab-close-btn"
