@@ -30,6 +30,7 @@ interface BookmarkContextMenuState {
 interface EditBookmarkModalState {
   open: boolean
   isNew: boolean
+  isRenameOnly?: boolean
   oldUrl: string
   name: string
   url: string
@@ -85,6 +86,63 @@ export function getArcTheme(hex?: string): ArcPalette {
   return ARC_PALETTES[0]
 }
 
+function BookmarkFavicon({
+  url,
+  explicitFavicon,
+  tabs,
+}: {
+  url: string
+  explicitFavicon?: string
+  tabs?: Array<{ url: string; favicon?: string }>
+}) {
+  const [loadError, setLoadError] = useState(false)
+
+  let faviconUrl = explicitFavicon
+  if (!faviconUrl && url) {
+    try {
+      const parsed = new URL(url)
+      const hostname = parsed.hostname
+      if (tabs) {
+        const match = tabs.find((t) => {
+          try {
+            return new URL(t.url).hostname === hostname && !!t.favicon
+          } catch {
+            return false
+          }
+        })
+        if (match?.favicon) {
+          faviconUrl = match.favicon
+        }
+      }
+      if (!faviconUrl && hostname && hostname.includes('.')) {
+        faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`
+      }
+    } catch {}
+  }
+
+  if (!faviconUrl || loadError) {
+    return <Globe size={13} className="arc-bm-icon" />
+  }
+
+  return (
+    <img
+      src={faviconUrl}
+      alt=""
+      className="arc-bm-favicon"
+      onError={() => setLoadError(true)}
+      style={{
+        width: 14,
+        height: 14,
+        borderRadius: 2,
+        flexShrink: 0,
+        marginRight: 5,
+        objectFit: 'contain',
+        verticalAlign: 'middle',
+      }}
+    />
+  )
+}
+
 export function GroupWorkspace() {
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
   const [urlInput, setUrlInput] = useState('')
@@ -138,6 +196,8 @@ export function GroupWorkspace() {
         void window.profileBrowser?.workspaceNavigate(curTab.id, payload.url)
       } else if (payload.action === 'new-tab' && payload.url) {
         if (curTab) void window.profileBrowser?.workspaceNewTab(curTab.profileId, payload.url)
+      } else if (payload.action === 'rename' && payload.bookmark) {
+        handleOpenRenameModal(payload.bookmark, payload.scope || 'shared')
       } else if (payload.action === 'edit' && payload.bookmark) {
         handleOpenEditModal(payload.bookmark, payload.scope || 'shared')
       } else if (payload.action === 'add') {
@@ -278,12 +338,26 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceShowBookmarkMenu?.(activeTab.profileId, bm, scope, x, y)
   }
 
+  function handleOpenRenameModal(bm: { name: string; url: string }, scope: 'shared' | 'profile') {
+    void window.profileBrowser?.workspaceSetModalActive?.(true)
+    setEditModal({
+      open: true,
+      isNew: false,
+      isRenameOnly: true,
+      oldUrl: bm.url,
+      name: bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name,
+      url: bm.url,
+      scope,
+    })
+  }
+
   function handleOpenEditModal(bm: { name: string; url: string } | null, scope: 'shared' | 'profile') {
     void window.profileBrowser?.workspaceSetModalActive?.(true)
     if (bm) {
       setEditModal({
         open: true,
         isNew: false,
+        isRenameOnly: false,
         oldUrl: bm.url,
         name: bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name,
         url: bm.url,
@@ -293,6 +367,7 @@ export function GroupWorkspace() {
       setEditModal({
         open: true,
         isNew: true,
+        isRenameOnly: false,
         oldUrl: '',
         name: activeTab?.title || '',
         url: activeTab?.url && !activeTab.url.startsWith('chrome://') ? activeTab.url : 'https://',
@@ -303,7 +378,7 @@ export function GroupWorkspace() {
 
   function handleCloseEditModal() {
     void window.profileBrowser?.workspaceSetModalActive?.(false)
-    setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
+    setEditModal({ open: false, isNew: false, isRenameOnly: false, oldUrl: '', name: '', url: '', scope: 'shared' })
   }
 
   function handleSaveEditModal() {
@@ -348,6 +423,7 @@ export function GroupWorkspace() {
       type: 'bookmark',
       name: cleanName,
       url: activeTab.url,
+      favicon: activeTab.favicon,
     }
     e.dataTransfer.setData('text/plain', activeTab.url)
     e.dataTransfer.setData('text/uri-list', activeTab.url)
@@ -725,7 +801,7 @@ export function GroupWorkspace() {
                     role="button"
                     tabIndex={0}
                   >
-                    <Globe size={12} className="arc-bm-icon" />
+                    <BookmarkFavicon url={bm.url} explicitFavicon={bm.favicon} tabs={workspace?.tabs} />
                     <span className="arc-bm-name">{cleanName}</span>
                     <button
                       type="button"
@@ -793,7 +869,7 @@ export function GroupWorkspace() {
                       role="button"
                       tabIndex={0}
                     >
-                      <span className="arc-item-mini-dot" style={{ backgroundColor: theme.highlight }} />
+                      <BookmarkFavicon url={bm.url} explicitFavicon={bm.favicon} tabs={workspace?.tabs} />
                       <span className="arc-bm-name">{cleanName}</span>
                       <button
                         type="button"
@@ -821,12 +897,14 @@ export function GroupWorkspace() {
         )}
       </main>
 
-      {/* 编辑书签模态对话框 (Modal) - 原生居中无遮挡 */}
+      {/* 编辑/重命名书签模态对话框 (Modal) - 原生居中无遮挡 */}
       {editModal.open && (
         <div className="arc-modal-overlay" onClick={handleCloseEditModal}>
           <div className="arc-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="arc-modal-header">
-              <span className="arc-modal-title">{editModal.isNew ? '添加书签' : '编辑书签'}</span>
+              <span className="arc-modal-title">
+                {editModal.isRenameOnly ? '重命名书签' : editModal.isNew ? '添加书签' : '编辑书签'}
+              </span>
               <button
                 type="button"
                 className="arc-modal-close"
@@ -836,28 +914,30 @@ export function GroupWorkspace() {
               </button>
             </div>
             <div className="arc-modal-body">
-              {/* 收藏分类选择：公共 vs 本号专属 */}
-              <div className="arc-modal-field">
-                <span className="arc-field-label">收藏类型</span>
-                <div className="arc-scope-selector">
-                  <button
-                    type="button"
-                    className={`arc-scope-option ${editModal.scope === 'shared' ? 'active' : ''}`}
-                    onClick={() => setEditModal({ ...editModal, scope: 'shared' })}
-                  >
-                    <Globe size={13} />
-                    <span>🌐 公共收藏（所有号可见）</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`arc-scope-option ${editModal.scope === 'profile' ? 'active' : ''}`}
-                    onClick={() => setEditModal({ ...editModal, scope: 'profile' })}
-                  >
-                    <User size={13} />
-                    <span>👤 #{activeTab?.profileNumber} 专属（仅本环境可见）</span>
-                  </button>
+              {/* 仅在完整编辑/新增模式下展示归属分类 */}
+              {!editModal.isRenameOnly && (
+                <div className="arc-modal-field">
+                  <span className="arc-field-label">收藏类型</span>
+                  <div className="arc-scope-selector">
+                    <button
+                      type="button"
+                      className={`arc-scope-option ${editModal.scope === 'shared' ? 'active' : ''}`}
+                      onClick={() => setEditModal({ ...editModal, scope: 'shared' })}
+                    >
+                      <Globe size={13} />
+                      <span>🌐 公共收藏（所有号可见）</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`arc-scope-option ${editModal.scope === 'profile' ? 'active' : ''}`}
+                      onClick={() => setEditModal({ ...editModal, scope: 'profile' })}
+                    >
+                      <User size={13} />
+                      <span>👤 #{activeTab?.profileNumber} 专属（仅本环境可见）</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <label className="arc-modal-field">
                 <span className="arc-field-label">名称</span>
@@ -868,29 +948,33 @@ export function GroupWorkspace() {
                   onChange={(e) => setEditModal({ ...editModal, name: e.target.value })}
                   placeholder="书签名称"
                   autoFocus
-                />
-              </label>
-              <label className="arc-modal-field">
-                <span className="arc-field-label">网址</span>
-                <input
-                  type="text"
-                  className="arc-field-input"
-                  value={editModal.url}
-                  onChange={(e) => setEditModal({ ...editModal, url: e.target.value })}
-                  placeholder="https://…"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleSaveEditModal()
                   }}
                 />
               </label>
+
+              {!editModal.isRenameOnly && (
+                <label className="arc-modal-field">
+                  <span className="arc-field-label">网址</span>
+                  <input
+                    type="text"
+                    className="arc-field-input"
+                    value={editModal.url}
+                    onChange={(e) => setEditModal({ ...editModal, url: e.target.value })}
+                    placeholder="https://…"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveEditModal()
+                    }}
+                  />
+                </label>
+              )}
             </div>
             <div className="arc-modal-footer">
               <button
                 type="button"
                 className="arc-modal-btn btn-secondary"
-                onClick={() =>
-                  setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
-                }
+                onClick={handleCloseEditModal}
               >
                 取消
               </button>
@@ -898,7 +982,7 @@ export function GroupWorkspace() {
                 type="button"
                 className="arc-modal-btn btn-primary"
                 onClick={handleSaveEditModal}
-                disabled={!editModal.url.trim()}
+                disabled={!editModal.name.trim() || (!editModal.isRenameOnly && !editModal.url.trim())}
               >
                 保存
               </button>

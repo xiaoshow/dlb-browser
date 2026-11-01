@@ -393,25 +393,18 @@ export class GroupWorkspaceManager {
       console.warn(`[Workspace] Proxy config warning for ${profile.name}:`, e)
     }
 
-    // 核心安全防护：将 User-Agent 与 Client Hints 严格对齐原生指纹内核 148.0.7778.215
-    const nativeUa =
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.215 Safari/537.36'
-    const targetUa = profile.userAgentMode === 'custom' && profile.userAgent ? profile.userAgent : nativeUa
+    // 纯净 User-Agent：剥除 "Electron/x.y.z" 标识，杜绝被网站识别为自动化工具，同时保持 Client Hints 自然一致
+    const defaultUa = ses.getUserAgent()
+    const cleanUa = defaultUa.replace(/\s*Electron\/[0-9.]+/gi, '')
+    const targetUa = profile.userAgentMode === 'custom' && profile.userAgent ? profile.userAgent : cleanUa
     ses.setUserAgent(targetUa)
 
     try {
       ses.webRequest.onBeforeSendHeaders((details, callback) => {
         const headers = { ...details.requestHeaders }
         for (const k of Object.keys(headers)) {
-          const kl = k.toLowerCase()
-          if (kl === 'user-agent') {
-            headers[k] = targetUa
-          } else if (kl === 'sec-ch-ua') {
-            headers[k] = '"Chromium";v="148", "Google Chrome";v="148", "Not?A_Brand";v="99"'
-          } else if (kl === 'sec-ch-ua-platform') {
-            headers[k] = '"macOS"'
-          } else if (kl === 'sec-ch-ua-mobile') {
-            headers[k] = '?0'
+          if (k.toLowerCase() === 'user-agent') {
+            headers[k] = headers[k].replace(/\s*Electron\/[0-9.]+/gi, '')
           }
         }
         callback({ requestHeaders: headers })
@@ -822,6 +815,16 @@ export class GroupWorkspaceManager {
               },
             },
         { type: 'separator' },
+        {
+          label: '重命名…',
+          click: () => {
+            ws.win.webContents.send('workspace:trigger-bookmark', {
+              action: 'rename',
+              bookmark,
+              scope,
+            })
+          },
+        },
         {
           label: '编辑…',
           click: () => {

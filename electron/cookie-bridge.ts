@@ -124,6 +124,7 @@ export interface BookmarkItem {
   id?: string
   name: string
   url: string
+  favicon?: string
 }
 
 export async function readProfileBookmarks(userDataDir: string, profileId: string): Promise<BookmarkItem[]> {
