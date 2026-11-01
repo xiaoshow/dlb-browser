@@ -707,26 +707,53 @@ ipcMain.handle('workspace:set-profile-color', (event, profileId: string, color: 
   if (ws) groupWorkspaceManager.setProfileColor(ws.groupId, profileId, color)
   return { ok: true }
 })
-ipcMain.handle('workspace:add-bookmark', async (event, profileId: string, name: string, url: string) => {
-  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
-  if (ws) await groupWorkspaceManager.addBookmark(ws.groupId, profileId, name, url)
-  return { ok: true }
-})
-ipcMain.handle('workspace:remove-bookmark', async (event, profileId: string, url: string) => {
-  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
-  if (ws) await groupWorkspaceManager.removeBookmark(ws.groupId, profileId, url)
-  return { ok: true }
-})
-ipcMain.handle('workspace:update-bookmark', async (event, oldUrl: string, newName: string, newUrl: string) => {
-  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
-  if (ws) await groupWorkspaceManager.updateBookmark(ws.groupId, oldUrl, newName, newUrl)
-  return { ok: true }
-})
-ipcMain.handle('workspace:reorder-bookmarks', async (event, bookmarks: any[]) => {
-  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
-  if (ws) await groupWorkspaceManager.reorderBookmarks(ws.groupId, bookmarks)
-  return { ok: true }
-})
+ipcMain.handle(
+  'workspace:add-bookmark',
+  async (event, profileId: string, name: string, url: string, scope?: 'shared' | 'profile') => {
+    const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+    if (ws) await groupWorkspaceManager.addBookmark(ws.groupId, profileId, name, url, scope || 'shared')
+    return { ok: true }
+  }
+)
+ipcMain.handle(
+  'workspace:remove-bookmark',
+  async (event, profileId: string, url: string, scope?: 'shared' | 'profile') => {
+    const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+    if (ws) await groupWorkspaceManager.removeBookmark(ws.groupId, profileId, url, scope || 'shared')
+    return { ok: true }
+  }
+)
+ipcMain.handle(
+  'workspace:update-bookmark',
+  async (
+    event,
+    profileId: string,
+    oldUrl: string,
+    newName: string,
+    newUrl: string,
+    scope?: 'shared' | 'profile'
+  ) => {
+    const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+    if (ws) await groupWorkspaceManager.updateBookmark(ws.groupId, profileId, oldUrl, newName, newUrl, scope || 'shared')
+    return { ok: true }
+  }
+)
+ipcMain.handle(
+  'workspace:move-bookmark-scope',
+  async (event, profileId: string, bookmark: any, targetScope: 'shared' | 'profile') => {
+    const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+    if (ws) await groupWorkspaceManager.moveBookmarkScope(ws.groupId, profileId, bookmark, targetScope)
+    return { ok: true }
+  }
+)
+ipcMain.handle(
+  'workspace:reorder-bookmarks',
+  async (event, profileId: string, bookmarks: any[], scope?: 'shared' | 'profile') => {
+    const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+    if (ws) await groupWorkspaceManager.reorderBookmarks(ws.groupId, profileId, bookmarks, scope || 'shared')
+    return { ok: true }
+  }
+)
 ipcMain.handle('workspace:move-tab', (event, sourceTabId: string, targetGroupId?: string, pinned?: boolean) => {
   const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
   if (ws) groupWorkspaceManager.moveTab(ws.groupId, sourceTabId, targetGroupId, pinned)

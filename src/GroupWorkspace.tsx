@@ -15,6 +15,8 @@ import {
   Edit2,
   Trash2,
   ExternalLink,
+  User,
+  ArrowRightLeft,
 } from 'lucide-react'
 
 interface BookmarkContextMenuState {
@@ -22,6 +24,7 @@ interface BookmarkContextMenuState {
   x: number
   y: number
   bookmark: { name: string; url: string } | null
+  scope: 'shared' | 'profile'
 }
 
 interface EditBookmarkModalState {
@@ -30,6 +33,7 @@ interface EditBookmarkModalState {
   oldUrl: string
   name: string
   url: string
+  scope: 'shared' | 'profile'
 }
 
 export interface ArcPalette {
@@ -86,15 +90,23 @@ export function GroupWorkspace() {
   const [urlInput, setUrlInput] = useState('')
   const [isEditingUrl, setIsEditingUrl] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
-  const [isDragOverBar, setIsDragOverBar] = useState(false)
-  const [draggedBookmarkIndex, setDraggedBookmarkIndex] = useState<number | null>(null)
-  const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState>({ visible: false, x: 0, y: 0, bookmark: null })
+  const [isDragOverShared, setIsDragOverShared] = useState(false)
+  const [isDragOverProfile, setIsDragOverProfile] = useState(false)
+  const [draggedBookmarkIndex, setDraggedBookmarkIndex] = useState<{ idx: number; scope: 'shared' | 'profile' } | null>(null)
+  const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    bookmark: null,
+    scope: 'shared',
+  })
   const [editModal, setEditModal] = useState<EditBookmarkModalState>({
     open: false,
     isNew: false,
     oldUrl: '',
     name: '',
     url: '',
+    scope: 'shared',
   })
   const omniboxInputRef = useRef<HTMLInputElement>(null)
 
@@ -189,20 +201,31 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceSetProfileColor(currentProfile.id, pal.bg)
   }
 
-  const isBookmarked = Boolean(
+  const sharedBookmarks = workspace?.sharedBookmarks || workspace?.bookmarks || []
+  const profileBookmarks = (activeTab?.profileId && workspace?.profileBookmarks?.[activeTab.profileId]) || []
+
+  const isBookmarkedInShared = Boolean(
     activeTab?.url &&
-      workspace?.bookmarks?.some((b) => b.url === activeTab.url || b.url === activeTab.url.replace(/\/$/, ''))
+      sharedBookmarks.some((b) => b.url === activeTab.url || b.url === activeTab.url.replace(/\/$/, ''))
   )
+  const isBookmarkedInProfile = Boolean(
+    activeTab?.url &&
+      profileBookmarks.some((b) => b.url === activeTab.url || b.url === activeTab.url.replace(/\/$/, ''))
+  )
+  const isBookmarked = isBookmarkedInShared || isBookmarkedInProfile
 
   function handleToggleBookmark() {
     if (!activeTab || !activeTab.url || activeTab.url === 'about:blank') return
-    if (isBookmarked) {
-      void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, activeTab.url)
+    if (isBookmarkedInProfile) {
+      void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, activeTab.url, 'profile')
+    } else if (isBookmarkedInShared) {
+      void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, activeTab.url, 'shared')
     } else {
       void window.profileBrowser?.workspaceAddBookmark(
         activeTab.profileId,
         activeTab.title || activeTab.url,
-        activeTab.url
+        activeTab.url,
+        'profile'
       )
     }
   }
@@ -215,20 +238,20 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceNavigate(activeTab.id, url)
   }
 
-  function handleRemoveBookmark(e: React.MouseEvent, url: string) {
+  function handleRemoveBookmark(e: React.MouseEvent, url: string, scope: 'shared' | 'profile') {
     e.stopPropagation()
     if (!activeTab) return
-    void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, url)
+    void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, url, scope)
   }
 
   function handleNewTabWithUrl(url: string) {
     if (!activeTab) return
-    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
     void window.profileBrowser?.workspaceNewTab(activeTab.profileId, url)
   }
 
-  function handleOpenEditModal(bm?: { name: string; url: string } | null) {
-    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+  function handleOpenEditModal(bm: { name: string; url: string } | null, scope: 'shared' | 'profile') {
+    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
     if (bm) {
       setEditModal({
         open: true,
@@ -236,6 +259,7 @@ export function GroupWorkspace() {
         oldUrl: bm.url,
         name: bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name,
         url: bm.url,
+        scope,
       })
     } else {
       setEditModal({
@@ -244,6 +268,7 @@ export function GroupWorkspace() {
         oldUrl: '',
         name: activeTab?.title || '',
         url: activeTab?.url && !activeTab.url.startsWith('chrome://') ? activeTab.url : 'https://',
+        scope,
       })
     }
   }
@@ -252,19 +277,35 @@ export function GroupWorkspace() {
     if (!editModal.url.trim()) return
     const cleanUrl = editModal.url.trim()
     const cleanName = editModal.name.trim() || cleanUrl
+    const targetScope = editModal.scope
+
     if (editModal.isNew) {
       if (activeTab) {
-        void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, cleanName, cleanUrl)
+        void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, cleanName, cleanUrl, targetScope)
       }
     } else {
-      void window.profileBrowser?.workspaceUpdateBookmark?.(editModal.oldUrl, cleanName, cleanUrl)
+      if (activeTab) {
+        void window.profileBrowser?.workspaceUpdateBookmark?.(
+          activeTab.profileId,
+          editModal.oldUrl,
+          cleanName,
+          cleanUrl,
+          targetScope
+        )
+      }
     }
-    setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })
+    setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
+  }
+
+  function handleMoveScope(bm: { name: string; url: string }, targetScope: 'shared' | 'profile') {
+    if (!activeTab) return
+    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
+    void window.profileBrowser?.workspaceMoveBookmarkScope?.(activeTab.profileId, bm, targetScope)
   }
 
   function handleCopyUrl(url: string) {
     void navigator.clipboard.writeText(url)
-    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
   }
 
   function handleLockDragStart(e: React.DragEvent) {
@@ -281,19 +322,10 @@ export function GroupWorkspace() {
     e.dataTransfer.effectAllowed = 'copy'
   }
 
-  function handleBarDragOver(e: React.DragEvent) {
+  function handleBarDrop(e: React.DragEvent, scope: 'shared' | 'profile') {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-    if (!isDragOverBar) setIsDragOverBar(true)
-  }
-
-  function handleBarDragLeave() {
-    setIsDragOverBar(false)
-  }
-
-  function handleBarDrop(e: React.DragEvent) {
-    e.preventDefault()
-    setIsDragOverBar(false)
+    setIsDragOverShared(false)
+    setIsDragOverProfile(false)
     if (!activeTab) return
 
     try {
@@ -301,7 +333,7 @@ export function GroupWorkspace() {
       if (jsonStr) {
         const data = JSON.parse(jsonStr)
         if (data.type === 'bookmark' && data.url) {
-          void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, data.name || data.url, data.url)
+          void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, data.name || data.url, data.url, scope)
           return
         }
       }
@@ -309,27 +341,31 @@ export function GroupWorkspace() {
 
     const uri = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
     if (uri && (uri.startsWith('http://') || uri.startsWith('https://'))) {
-      void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, activeTab.title || uri, uri)
+      void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, activeTab.title || uri, uri, scope)
     }
   }
 
-  function handleBookmarkDragStart(e: React.DragEvent, idx: number) {
-    setDraggedBookmarkIndex(idx)
+  function handleBookmarkDragStart(e: React.DragEvent, idx: number, scope: 'shared' | 'profile') {
+    setDraggedBookmarkIndex({ idx, scope })
     e.dataTransfer.setData('application/x-bm-idx', String(idx))
+    e.dataTransfer.setData('application/x-bm-scope', scope)
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  function handleBookmarkDropOnIndex(e: React.DragEvent, targetIdx: number) {
+  function handleBookmarkDropOnIndex(e: React.DragEvent, targetIdx: number, targetScope: 'shared' | 'profile') {
     e.preventDefault()
     e.stopPropagation()
     const srcStr = e.dataTransfer.getData('application/x-bm-idx')
-    if (srcStr !== '' && workspace?.bookmarks) {
+    const srcScope = e.dataTransfer.getData('application/x-bm-scope') as 'shared' | 'profile'
+    if (srcStr !== '' && activeTab) {
       const srcIdx = Number(srcStr)
-      if (srcIdx !== targetIdx && !Number.isNaN(srcIdx)) {
-        const updated = [...workspace.bookmarks]
-        const [item] = updated.splice(srcIdx, 1)
-        updated.splice(targetIdx, 0, item)
-        void window.profileBrowser?.workspaceReorderBookmarks?.(updated)
+      if (srcScope === targetScope) {
+        const list = targetScope === 'shared' ? [...sharedBookmarks] : [...profileBookmarks]
+        if (srcIdx !== targetIdx && !Number.isNaN(srcIdx)) {
+          const [item] = list.splice(srcIdx, 1)
+          list.splice(targetIdx, 0, item)
+          void window.profileBrowser?.workspaceReorderBookmarks?.(activeTab.profileId, list, targetScope)
+        }
       }
     }
     setDraggedBookmarkIndex(null)
@@ -616,42 +652,50 @@ export function GroupWorkspace() {
           )}
         </header>
 
-        {/* 第二行：官方 Chrome 原版书签栏 (高 30px，紧贴在顶栏下方，拖拽小锁直接收藏，右键完整菜单) */}
-        <div
-          className={`arc-chrome-bookmarks-bar official-chrome-bookmarks-bar ${isDragOverBar ? 'drag-over' : ''}`}
-          onDragOver={handleBarDragOver}
-          onDragLeave={handleBarDragLeave}
-          onDrop={handleBarDrop}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: null })
-          }}
-        >
-          <div className="arc-bookmarks-items-row">
-            <span className="arc-shared-badge" title="当前聚合窗口中所有环境共用此套收藏夹">
-              <Star size={11} /> 共用收藏
+        {/* 第二行：官方 Chrome 原版书签栏 (高 30px，分两种：🌐公共收藏 + 👤本号专属收藏) */}
+        <div className="arc-chrome-bookmarks-bar official-chrome-bookmarks-bar">
+          {/* 1. 公共收藏区 (所有环境共用) */}
+          <div
+            className={`arc-bookmarks-zone arc-shared-zone ${isDragOverShared ? 'drag-over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'copy'
+              if (!isDragOverShared) setIsDragOverShared(true)
+            }}
+            onDragLeave={() => setIsDragOverShared(false)}
+            onDrop={(e) => handleBarDrop(e, 'shared')}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: null, scope: 'shared' })
+            }}
+            title="公共收藏区：组内所有号共用。拖拽小锁至此可添加公共书签"
+          >
+            <span className="arc-shared-badge">
+              <Globe size={11} /> 公共收藏
             </span>
-            {workspace?.bookmarks && workspace.bookmarks.length > 0 ? (
-              workspace.bookmarks.map((bm, idx) => {
+            {sharedBookmarks.length > 0 ? (
+              sharedBookmarks.map((bm, idx) => {
                 const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
+                const isItemDragging =
+                  draggedBookmarkIndex?.scope === 'shared' && draggedBookmarkIndex.idx === idx
                 return (
                   <div
                     key={`${bm.url}-${idx}`}
-                    className={`arc-bookmark-pill official-bookmark-pill ${draggedBookmarkIndex === idx ? 'is-dragging' : ''}`}
+                    className={`arc-bookmark-pill official-bookmark-pill ${isItemDragging ? 'is-dragging' : ''}`}
                     draggable
-                    onDragStart={(e) => handleBookmarkDragStart(e, idx)}
+                    onDragStart={(e) => handleBookmarkDragStart(e, idx, 'shared')}
                     onDragOver={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                     }}
-                    onDrop={(e) => handleBookmarkDropOnIndex(e, idx)}
+                    onDrop={(e) => handleBookmarkDropOnIndex(e, idx, 'shared')}
                     onClick={() => handleBookmarkClick(bm.url)}
                     onContextMenu={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: bm })
+                      setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: bm, scope: 'shared' })
                     }}
-                    title={`${cleanName}\n${bm.url}\n（点击打开，右键编辑，可拖拽调序）`}
+                    title={`${cleanName}\n${bm.url}\n（🌐公共收藏 · 右键可转为本号专属）`}
                     role="button"
                     tabIndex={0}
                   >
@@ -660,8 +704,8 @@ export function GroupWorkspace() {
                     <button
                       type="button"
                       className="arc-bm-del"
-                      title="删除此收藏"
-                      onClick={(e) => handleRemoveBookmark(e, bm.url)}
+                      title="删除此公共收藏"
+                      onClick={(e) => handleRemoveBookmark(e, bm.url, 'shared')}
                     >
                       ×
                     </button>
@@ -669,12 +713,85 @@ export function GroupWorkspace() {
                 )
               })
             ) : (
-              <div className="arc-bookmarks-empty-hint">
-                <Star size={12} />
-                <span>从地址栏拖拽 🔒 小锁至此，或点击 ⭐ 即可收藏（所有环境共用）</span>
-              </div>
+              <span className="arc-zone-empty-tip">拖入 🔒 存为公共</span>
             )}
           </div>
+
+          {/* 中间区隔竖线 */}
+          <div className="arc-bookmarks-section-divider" />
+
+          {/* 2. 本号专属收藏区 (仅当前号独享，切号自动跟随切换) */}
+          {activeTab && (
+            <div
+              className={`arc-bookmarks-zone arc-profile-zone ${isDragOverProfile ? 'drag-over' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'copy'
+                if (!isDragOverProfile) setIsDragOverProfile(true)
+              }}
+              onDragLeave={() => setIsDragOverProfile(false)}
+              onDrop={(e) => handleBarDrop(e, 'profile')}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: null, scope: 'profile' })
+              }}
+              title={`专属收藏区：仅 #${activeTab.profileNumber} ${activeTab.profileName} 独享`}
+            >
+              <span
+                className="arc-profile-bm-badge"
+                style={{
+                  borderColor: `${theme.highlight}55`,
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                }}
+              >
+                <span className="arc-profile-bm-dot" style={{ backgroundColor: theme.highlight }} />
+                <User size={11} />
+                <span>#{activeTab.profileNumber} 专属</span>
+              </span>
+              {profileBookmarks.length > 0 ? (
+                profileBookmarks.map((bm, idx) => {
+                  const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
+                  const isItemDragging =
+                    draggedBookmarkIndex?.scope === 'profile' && draggedBookmarkIndex.idx === idx
+                  return (
+                    <div
+                      key={`${bm.url}-${idx}`}
+                      className={`arc-bookmark-pill official-bookmark-pill arc-profile-bm-pill ${isItemDragging ? 'is-dragging' : ''}`}
+                      draggable
+                      onDragStart={(e) => handleBookmarkDragStart(e, idx, 'profile')}
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      onDrop={(e) => handleBookmarkDropOnIndex(e, idx, 'profile')}
+                      onClick={() => handleBookmarkClick(bm.url)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: bm, scope: 'profile' })
+                      }}
+                      title={`${cleanName}\n${bm.url}\n（👤#${activeTab.profileNumber}专属 · 右键可转为公共）`}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <span className="arc-item-mini-dot" style={{ backgroundColor: theme.highlight }} />
+                      <span className="arc-bm-name">{cleanName}</span>
+                      <button
+                        type="button"
+                        className="arc-bm-del"
+                        title="删除此专属收藏"
+                        onClick={(e) => handleRemoveBookmark(e, bm.url, 'profile')}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )
+                })
+              ) : (
+                <span className="arc-zone-empty-tip">拖入 🔒 存为本号专属</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 加载进度指示条 */}
@@ -689,7 +806,7 @@ export function GroupWorkspace() {
       {contextMenu.visible && (
         <div
           className="arc-chrome-context-menu"
-          style={{ left: Math.min(contextMenu.x, window.innerWidth - 180), top: contextMenu.y }}
+          style={{ left: Math.min(contextMenu.x, window.innerWidth - 200), top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.bookmark ? (
@@ -699,7 +816,7 @@ export function GroupWorkspace() {
                 className="arc-context-item"
                 onClick={() => {
                   if (contextMenu.bookmark) handleBookmarkClick(contextMenu.bookmark.url)
-                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
                 }}
               >
                 <Globe size={13} />
@@ -716,10 +833,37 @@ export function GroupWorkspace() {
                 <span>在新标签页打开</span>
               </button>
               <div className="arc-context-divider" />
+              {/* 一键切换归属：公共 vs 专属 */}
+              {contextMenu.scope === 'shared' ? (
+                <button
+                  type="button"
+                  className="arc-context-item"
+                  onClick={() => {
+                    if (contextMenu.bookmark) handleMoveScope(contextMenu.bookmark, 'profile')
+                  }}
+                  title="将此书签移入当前环境专属收藏"
+                >
+                  <ArrowRightLeft size={13} />
+                  <span>转为 #{activeTab?.profileNumber} 专属收藏</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="arc-context-item"
+                  onClick={() => {
+                    if (contextMenu.bookmark) handleMoveScope(contextMenu.bookmark, 'shared')
+                  }}
+                  title="将此书签移入公共收藏，供所有号共用"
+                >
+                  <ArrowRightLeft size={13} />
+                  <span>转为公共收藏（所有号可见）</span>
+                </button>
+              )}
+              <div className="arc-context-divider" />
               <button
                 type="button"
                 className="arc-context-item"
-                onClick={() => handleOpenEditModal(contextMenu.bookmark)}
+                onClick={() => handleOpenEditModal(contextMenu.bookmark, contextMenu.scope)}
               >
                 <Edit2 size={13} />
                 <span>编辑…</span>
@@ -739,8 +883,8 @@ export function GroupWorkspace() {
                 type="button"
                 className="arc-context-item text-danger"
                 onClick={(e) => {
-                  if (contextMenu.bookmark) handleRemoveBookmark(e, contextMenu.bookmark.url)
-                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+                  if (contextMenu.bookmark) handleRemoveBookmark(e, contextMenu.bookmark.url, contextMenu.scope)
+                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
                 }}
               >
                 <Trash2 size={13} />
@@ -751,10 +895,10 @@ export function GroupWorkspace() {
             <button
               type="button"
               className="arc-context-item"
-              onClick={() => handleOpenEditModal(null)}
+              onClick={() => handleOpenEditModal(null, contextMenu.scope)}
             >
               <Plus size={13} />
-              <span>添加书签…</span>
+              <span>添加{contextMenu.scope === 'shared' ? '公共' : '专属'}书签…</span>
             </button>
           )}
         </div>
@@ -764,7 +908,9 @@ export function GroupWorkspace() {
       {editModal.open && (
         <div
           className="arc-modal-overlay"
-          onClick={() => setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })}
+          onClick={() =>
+            setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
+          }
         >
           <div className="arc-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="arc-modal-header">
@@ -772,12 +918,37 @@ export function GroupWorkspace() {
               <button
                 type="button"
                 className="arc-modal-close"
-                onClick={() => setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })}
+                onClick={() =>
+                  setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
+                }
               >
                 ×
               </button>
             </div>
             <div className="arc-modal-body">
+              {/* 收藏分类选择：公共 vs 本号专属 */}
+              <div className="arc-modal-field">
+                <span className="arc-field-label">收藏类型</span>
+                <div className="arc-scope-selector">
+                  <button
+                    type="button"
+                    className={`arc-scope-option ${editModal.scope === 'shared' ? 'active' : ''}`}
+                    onClick={() => setEditModal({ ...editModal, scope: 'shared' })}
+                  >
+                    <Globe size={13} />
+                    <span>🌐 公共收藏（所有号可见）</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`arc-scope-option ${editModal.scope === 'profile' ? 'active' : ''}`}
+                    onClick={() => setEditModal({ ...editModal, scope: 'profile' })}
+                  >
+                    <User size={13} />
+                    <span>👤 #{activeTab?.profileNumber} 专属（仅本环境可见）</span>
+                  </button>
+                </div>
+              </div>
+
               <label className="arc-modal-field">
                 <span className="arc-field-label">名称</span>
                 <input
@@ -807,7 +978,9 @@ export function GroupWorkspace() {
               <button
                 type="button"
                 className="arc-modal-btn btn-secondary"
-                onClick={() => setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })}
+                onClick={() =>
+                  setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '', scope: 'shared' })
+                }
               >
                 取消
               </button>

@@ -198,6 +198,58 @@ export async function removeProfileBookmark(
   }
 }
 
+export async function updateProfileBookmark(
+  userDataDir: string,
+  profileId: string,
+  oldUrl: string,
+  newName: string,
+  newUrl: string
+): Promise<void> {
+  const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const data = JSON.parse(raw)
+    const children = data?.roots?.bookmark_bar?.children
+    if (Array.isArray(children)) {
+      const target = children.find((c: any) => c?.url === oldUrl)
+      if (target) {
+        target.name = newName.trim() || target.name
+        target.url = newUrl.trim() || target.url
+        await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
+      }
+    }
+  } catch (err) {
+    console.warn(`[Bookmarks] Failed to update bookmark for ${profileId}:`, err)
+  }
+}
+
+export async function reorderProfileBookmarks(
+  userDataDir: string,
+  profileId: string,
+  orderedItems: BookmarkItem[]
+): Promise<void> {
+  const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const data = JSON.parse(raw)
+    if (!data.roots) data.roots = {}
+    if (!data.roots.bookmark_bar) data.roots.bookmark_bar = { children: [], name: 'Bookmarks Bar', type: 'folder' }
+    
+    // 按新顺序重组 children
+    data.roots.bookmark_bar.children = orderedItems.map((item) => ({
+      date_added: String((Date.now() + 11644473600000) * 1000),
+      guid: item.id || randomUUID(),
+      id: item.id || String(Date.now()),
+      name: item.name || item.url,
+      type: 'url',
+      url: item.url,
+    }))
+    await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
+  } catch (err) {
+    console.warn(`[Bookmarks] Failed to reorder bookmarks for ${profileId}:`, err)
+  }
+}
+
 /**
  * 共享/共用收藏夹库 (Shared Workspace Bookmarks)
  * 所有选中的 Profile 在同窗聚合工作台内共享这一套收藏

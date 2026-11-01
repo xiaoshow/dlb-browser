@@ -998,62 +998,75 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
 .arc-profile-section {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  margin-bottom: 12px;
 }
 .arc-section-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  font-size: 11.5px;
-  font-weight: 700;
+  gap: 7px;
+  padding: 6px 10px;
+  font-size: 13px !important;
+  font-weight: 800 !important;
   color: var(--arc-text);
-  opacity: 0.85;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  user-select: none;
+  transition: all 0.15s ease;
 }
 .arc-section-header.active-section {
-  opacity: 1;
+  background: rgba(255, 255, 255, 0.65) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 .arc-section-dot {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
 }
 .arc-section-name {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.2px;
 }
 .arc-section-count {
-  font-size: 10px;
-  opacity: 0.75;
-  background: rgba(0, 0, 0, 0.08);
-  padding: 0 5px;
-  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  opacity: 0.9;
+  background: rgba(0, 0, 0, 0.1);
+  padding: 1px 6px;
+  border-radius: 10px;
 }
 .arc-section-add-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
   border: none;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.04);
   color: var(--arc-text);
   cursor: pointer;
-  opacity: 0.65;
+  opacity: 0.75;
   transition: opacity 0.15s, background 0.15s;
 }
 .arc-section-add-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.8);
 }
 .arc-section-tabs {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  padding-left: 6px;
 }
 .arc-tab-item {
   display: flex;
@@ -1346,8 +1359,8 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   max-height: 30px;
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  gap: 4px;
+  padding: 0 8px;
+  gap: 2px;
   background: #ffffff !important;
   border-bottom: 1px solid #e8eaed;
   -webkit-app-region: no-drag;
@@ -1357,40 +1370,86 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   -webkit-user-select: none;
   z-index: 10;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
-}
-.arc-chrome-bookmarks-bar.drag-over {
-  background: #e8f0fe !important;
-  box-shadow: inset 0 0 0 2px #1a73e8;
 }
 .arc-chrome-bookmarks-bar::-webkit-scrollbar {
   display: none;
 }
-.arc-bookmarks-items-row {
+
+/* 双轨制书签放置区 (公共 vs 个人专属) */
+.arc-bookmarks-zone {
   display: flex;
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: 6px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
+.arc-bookmarks-zone.drag-over {
+  background: #e8f0fe !important;
+  box-shadow: inset 0 0 0 2px #1a73e8;
+}
+.arc-zone-empty-tip {
+  font-size: 11px;
+  color: #9aa0a6;
+  padding: 0 4px;
+  font-style: italic;
+  user-select: none;
+}
+.arc-bookmarks-section-divider {
+  width: 1px;
+  height: 18px;
+  background: #dadce0;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
 .arc-shared-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-weight: 600;
-  color: #5f6368 !important;
-  background: #f1f3f4;
+  font-weight: 700;
+  color: #1a73e8 !important;
+  background: #e8f0fe;
   padding: 2px 7px;
   border-radius: 4px;
-  margin-right: 3px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  margin-right: 2px;
+  border: 1px solid #d2e3fc;
 }
+.arc-profile-bm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #202124;
+  background: #f8f9fa;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-right: 2px;
+  border: 1px solid #dadce0;
+}
+.arc-profile-bm-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.arc-item-mini-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 1px;
+}
+
 .arc-bookmark-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   height: 24px;
-  padding: 0 8px;
+  padding: 0 7px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 400;
@@ -1422,7 +1481,7 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 180px;
+  max-width: 160px;
   color: #202124 !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
   font-size: 12px;
@@ -1586,6 +1645,39 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
 .arc-field-input:focus {
   border-color: #1a73e8;
   box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+.arc-scope-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 2px;
+}
+.arc-scope-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #dadce0;
+  background: #ffffff;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #3c4043;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.arc-scope-option:hover {
+  background: #f8f9fa;
+  border-color: #bdc1c6;
+}
+.arc-scope-option.active {
+  border-color: #1a73e8;
+  background: #e8f0fe;
+  color: #1a73e8;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px #1a73e8;
 }
 .arc-modal-footer {
   display: flex;

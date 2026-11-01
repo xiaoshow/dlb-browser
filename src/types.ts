@@ -135,6 +135,8 @@ export interface WorkspaceState {
   tabs: WorkspaceTab[]
   activeTabId: string | null
   bookmarks?: BookmarkItem[]
+  sharedBookmarks?: BookmarkItem[]
+  profileBookmarks?: Record<string, BookmarkItem[]>
 }
 
 export interface BrowserAPI {
@@ -167,10 +169,11 @@ export interface BrowserAPI {
   workspaceReload: (tabId: string) => Promise<void>
   workspaceSetCommandBar: (visible: boolean) => Promise<void>
   workspaceSetProfileColor: (profileId: string, color: string) => Promise<void>
-  workspaceAddBookmark: (profileId: string, name: string, url: string) => Promise<void>
-  workspaceRemoveBookmark: (profileId: string, url: string) => Promise<void>
-  workspaceUpdateBookmark?: (oldUrl: string, newName: string, newUrl: string) => Promise<{ ok: boolean }>
-  workspaceReorderBookmarks?: (bookmarks: BookmarkItem[]) => Promise<{ ok: boolean }>
+  workspaceAddBookmark: (profileId: string, name: string, url: string, scope?: 'shared' | 'profile') => Promise<void>
+  workspaceRemoveBookmark: (profileId: string, url: string, scope?: 'shared' | 'profile') => Promise<void>
+  workspaceUpdateBookmark?: (profileId: string, oldUrl: string, newName: string, newUrl: string, scope?: 'shared' | 'profile') => Promise<{ ok: boolean }>
+  workspaceMoveBookmarkScope?: (profileId: string, bookmark: BookmarkItem, targetScope: 'shared' | 'profile') => Promise<{ ok: boolean }>
+  workspaceReorderBookmarks?: (profileId: string, bookmarks: BookmarkItem[], scope?: 'shared' | 'profile') => Promise<{ ok: boolean }>
   workspaceMoveTab?: (sourceTabId: string, targetGroupId?: string, pinned?: boolean) => Promise<{ ok: boolean }>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
   onFocusOmnibox?: (callback: () => void) => () => void

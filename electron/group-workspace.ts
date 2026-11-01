@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, WebContentsView } from 'electron'
+import { app, BrowserWindow, session, WebContentsView, nativeImage, Menu } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import {
@@ -7,6 +7,8 @@ import {
   readProfileBookmarks,
   addProfileBookmark,
   removeProfileBookmark,
+  updateProfileBookmark,
+  reorderProfileBookmarks,
   readSharedBookmarks,
   addSharedBookmark,
   removeSharedBookmark,
@@ -92,12 +94,18 @@ export class GroupWorkspaceManager {
     const state = this.getState()
     const profiles = state.profiles || []
     const groups = state.groups || []
+    const pbObj: Record<string, BookmarkItem[]> = {}
+    for (const [k, v] of this.profileBookmarks.entries()) {
+      pbObj[k] = v
+    }
     return {
       groupId: ws.groupId,
       groupName: ws.groupName,
       groupColor: ws.groupColor,
       activeTabId: ws.activeTabId,
       bookmarks: this.sharedBookmarks,
+      sharedBookmarks: this.sharedBookmarks,
+      profileBookmarks: pbObj,
       tabs: ws.tabs.map((t) => {
         const p = profiles.find((item: any) => item.id === t.profileId)
         const grp = groups.find((g: any) => g.id === p?.groupId)
@@ -195,9 +203,13 @@ export class GroupWorkspaceManager {
       return { ok: false, error: '该分组内暂无任何 Profile，请先添加环境' }
     }
 
-    // 初始化/加载同窗聚合共用书签池（选上的号共用同一个收藏夹）
+    // 初始化/加载同窗聚合共用书签池与各环境专属书签
     const initialPids = profiles.map((p: any) => p.id)
     this.sharedBookmarks = await readSharedBookmarks(app.getPath('userData'), initialPids)
+    for (const pid of initialPids) {
+      const pItems = await readProfileBookmarks(app.getPath('userData'), pid)
+      this.profileBookmarks.set(pid, pItems)
+    }
 
     // If workspace already exists for this group, focus and return
     const existing = this.workspaces.get(group.id)
@@ -207,12 +219,22 @@ export class GroupWorkspaceManager {
       return { ok: true }
     }
 
+    const baseIconPath = join(
+      app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'),
+      'native/prism-dock.png'
+    )
+    let workspaceIcon: Electron.NativeImage | undefined
+    try {
+      workspaceIcon = nativeImage.createFromPath(baseIconPath)
+    } catch {}
+
     const win = new BrowserWindow({
       title: `${group.name} · Arc 聚合工作台`,
       width: 1480,
       height: 920,
       minWidth: 1040,
       minHeight: 640,
+      icon: workspaceIcon && !workspaceIcon.isEmpty() ? workspaceIcon : undefined,
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 18, y: 16 },
       backgroundColor: '#8ee2b5',
@@ -224,6 +246,32 @@ export class GroupWorkspaceManager {
         nodeIntegration: false,
       },
     })
+
+    // macOS Dock 图标与徽标支持 (保证聚合打开时在 Dock 醒目可见)
+    if (process.platform === 'darwin' && app.dock) {
+      try {
+        app.dock.show()
+        if (workspaceIcon && !workspaceIcon.isEmpty()) {
+          app.dock.setIcon(workspaceIcon)
+        }
+        app.dock.setBadge(profiles.length > 0 ? String(profiles.length) : '聚合')
+
+        const dockMenu = Menu.buildFromTemplate([
+          {
+            label: `🌟 聚合工作台：${group.name}（${profiles.length} 个环境）`,
+            click: () => {
+              if (!win.isDestroyed()) {
+                win.show()
+                win.focus()
+              }
+            },
+          },
+        ])
+        app.dock.setMenu(dockMenu)
+      } catch (err) {
+        console.warn('[Dock] Failed to configure dock for group workspace:', err)
+      }
+    }
 
     const ws: WorkspaceSession = {
       win,
@@ -238,9 +286,19 @@ export class GroupWorkspaceManager {
     this.winToGroupId.set(win.id, group.id)
 
     win.on('resize', () => this.updateBounds(ws))
+    win.on('focus', () => {
+      if (process.platform === 'darwin' && app.dock) {
+        app.dock.show()
+        app.dock.setBadge(profiles.length > 0 ? String(profiles.length) : '聚合')
+      }
+    })
     win.on('closed', () => {
       this.winToGroupId.delete(win.id)
       this.workspaces.delete(group.id)
+      // 如果没有其他聚合窗口在跑，清空 Dock 角标
+      if (process.platform === 'darwin' && app.dock && this.workspaces.size === 0) {
+        app.dock.setBadge('')
+      }
       // Destroy views
       for (const t of ws.tabs) {
         try {
@@ -561,29 +619,100 @@ export class GroupWorkspaceManager {
     return bms
   }
 
-  async addBookmark(groupId: string, profileId: string, name: string, url: string) {
+  async addBookmark(
+    groupId: string,
+    profileId: string,
+    name: string,
+    url: string,
+    scope: 'shared' | 'profile' = 'shared'
+  ) {
     const ws = this.workspaces.get(groupId)
-    const pids = ws ? Array.from(new Set(ws.tabs.map(t => t.profileId))) : [profileId]
-    this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), name, url, pids)
+    if (scope === 'profile' && profileId) {
+      await addProfileBookmark(app.getPath('userData'), profileId, name, url)
+      const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
+      this.profileBookmarks.set(profileId, updated)
+    } else {
+      const pids = ws ? Array.from(new Set(ws.tabs.map((t) => t.profileId))) : [profileId]
+      this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), name, url, pids)
+    }
     if (ws) this.broadcastState(ws)
   }
 
-  async removeBookmark(groupId: string, profileId: string, url: string) {
+  async removeBookmark(
+    groupId: string,
+    profileId: string,
+    url: string,
+    scope: 'shared' | 'profile' = 'shared'
+  ) {
     const ws = this.workspaces.get(groupId)
-    const pids = ws ? Array.from(new Set(ws.tabs.map(t => t.profileId))) : [profileId]
-    this.sharedBookmarks = await removeSharedBookmark(app.getPath('userData'), url, pids)
+    if (scope === 'profile' && profileId) {
+      await removeProfileBookmark(app.getPath('userData'), profileId, url)
+      const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
+      this.profileBookmarks.set(profileId, updated)
+    } else {
+      const pids = ws ? Array.from(new Set(ws.tabs.map((t) => t.profileId))) : [profileId]
+      this.sharedBookmarks = await removeSharedBookmark(app.getPath('userData'), url, pids)
+    }
     if (ws) this.broadcastState(ws)
   }
 
-  async updateBookmark(groupId: string, oldUrl: string, newName: string, newUrl: string) {
+  async updateBookmark(
+    groupId: string,
+    profileId: string,
+    oldUrl: string,
+    newName: string,
+    newUrl: string,
+    scope: 'shared' | 'profile' = 'shared'
+  ) {
     const ws = this.workspaces.get(groupId)
-    this.sharedBookmarks = await updateSharedBookmark(app.getPath('userData'), oldUrl, newName, newUrl)
+    if (scope === 'profile' && profileId) {
+      await updateProfileBookmark(app.getPath('userData'), profileId, oldUrl, newName, newUrl)
+      const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
+      this.profileBookmarks.set(profileId, updated)
+    } else {
+      this.sharedBookmarks = await updateSharedBookmark(app.getPath('userData'), oldUrl, newName, newUrl)
+    }
     if (ws) this.broadcastState(ws)
   }
 
-  async reorderBookmarks(groupId: string, bookmarks: BookmarkItem[]) {
+  async moveBookmarkScope(
+    groupId: string,
+    profileId: string,
+    bookmark: BookmarkItem,
+    targetScope: 'shared' | 'profile'
+  ) {
     const ws = this.workspaces.get(groupId)
-    this.sharedBookmarks = await reorderSharedBookmarks(app.getPath('userData'), bookmarks)
+    if (targetScope === 'shared') {
+      if (profileId) {
+        await removeProfileBookmark(app.getPath('userData'), profileId, bookmark.url)
+        const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
+        this.profileBookmarks.set(profileId, updated)
+      }
+      this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), bookmark.name, bookmark.url, [])
+    } else if (targetScope === 'profile') {
+      this.sharedBookmarks = await removeSharedBookmark(app.getPath('userData'), bookmark.url, [])
+      if (profileId) {
+        await addProfileBookmark(app.getPath('userData'), profileId, bookmark.name, bookmark.url)
+        const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
+        this.profileBookmarks.set(profileId, updated)
+      }
+    }
+    if (ws) this.broadcastState(ws)
+  }
+
+  async reorderBookmarks(
+    groupId: string,
+    profileId: string,
+    bookmarks: BookmarkItem[],
+    scope: 'shared' | 'profile' = 'shared'
+  ) {
+    const ws = this.workspaces.get(groupId)
+    if (scope === 'profile' && profileId) {
+      await reorderProfileBookmarks(app.getPath('userData'), profileId, bookmarks)
+      this.profileBookmarks.set(profileId, bookmarks)
+    } else {
+      this.sharedBookmarks = await reorderSharedBookmarks(app.getPath('userData'), bookmarks)
+    }
     if (ws) this.broadcastState(ws)
   }
 
