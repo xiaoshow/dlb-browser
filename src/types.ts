@@ -138,6 +138,7 @@ export interface WorkspaceState {
   bookmarks?: BookmarkItem[]
   sharedBookmarks?: BookmarkItem[]
   profileBookmarks?: Record<string, BookmarkItem[]>
+  faviconCache?: Record<string, string>
 }
 
 export interface BrowserAPI {

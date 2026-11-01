@@ -109,22 +109,20 @@ function ChromeFolderIcon() {
 
 function BookmarkFavicon({
   url,
-  explicitFavicon,
-  tabs,
+  faviconCache,
 }: {
   url: string
-  explicitFavicon?: string
-  tabs?: Array<{ url: string; favicon?: string }>
+  faviconCache?: Record<string, string>
 }) {
   const [loadError, setLoadError] = useState(false)
 
-  // 严格使用书签自带真实 Favicon 或当前打开标签页的精确匹配 Favicon，绝不跨路径模糊借用
-  let faviconUrl = explicitFavicon
-  if (!faviconUrl && url && tabs) {
-    const match = tabs.find((t) => t.url === url && !!t.favicon)
-    if (match?.favicon) {
-      faviconUrl = match.favicon
-    }
+  // 100% 对齐 Chrome 原生规范：按 Origin 读取本地已有缓存，绝不向外发包，绝不跨 Tab 借用
+  let faviconUrl: string | undefined
+  if (url && faviconCache) {
+    try {
+      const origin = new URL(url).origin
+      faviconUrl = faviconCache[origin]
+    } catch {}
   }
 
   if (faviconUrl && !loadError) {
@@ -135,11 +133,11 @@ function BookmarkFavicon({
         className="arc-bm-favicon"
         onError={() => setLoadError(true)}
         style={{
-          width: 13,
-          height: 13,
+          width: 14,
+          height: 14,
           borderRadius: 2,
           flexShrink: 0,
-          marginRight: 3,
+          marginRight: 4,
           objectFit: 'contain',
           verticalAlign: 'middle',
         }}
@@ -147,15 +145,15 @@ function BookmarkFavicon({
     )
   }
 
-  // 官方 Chrome 原版书签默认白纸折角图标 (零网络请求，纯 SVG 绘制)
+  // 官方 Chrome 原版书签默认白纸折角纯 SVG 图标 (零网络请求，纯本地绘制)
   return (
     <svg
-      width="13"
-      height="13"
+      width="14"
+      height="14"
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ flexShrink: 0, marginRight: 3, verticalAlign: 'middle' }}
+      style={{ flexShrink: 0, marginRight: 4, verticalAlign: 'middle' }}
     >
       <path
         d="M3.5 2C2.67 2 2 2.67 2 3.5V12.5C2 13.33 2.67 14 3.5 14H12.5C13.33 14 14 13.33 14 12.5V5.5L10.5 2H3.5Z"
@@ -876,7 +874,7 @@ export function GroupWorkspaceInner() {
                     role="button"
                     tabIndex={0}
                   >
-                    <BookmarkFavicon url={bm.url} explicitFavicon={bm.favicon} tabs={workspace?.tabs} />
+                    <BookmarkFavicon url={bm.url} faviconCache={workspace?.faviconCache} />
                     <span className="arc-bm-name">{cleanName}</span>
                   </div>
                 )
@@ -925,7 +923,7 @@ export function GroupWorkspaceInner() {
                       role="button"
                       tabIndex={0}
                     >
-                      <BookmarkFavicon url={bm.url} explicitFavicon={bm.favicon} tabs={workspace?.tabs} />
+                      <BookmarkFavicon url={bm.url} faviconCache={workspace?.faviconCache} />
                       <span className="arc-bm-name">{cleanName}</span>
                     </div>
                   )

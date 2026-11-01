@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session, WebContentsView, nativeImage, Menu, clipboard } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { access, writeFile } from 'node:fs/promises'
+import { access, writeFile, readFile } from 'node:fs/promises'
 import {
   importNativeCookiesToSession,
   setupCookieSyncBack,
@@ -61,6 +61,37 @@ export class GroupWorkspaceManager {
   private profileBookmarks = new Map<string, BookmarkItem[]>()
   private sharedBookmarks: BookmarkItem[] = []
   private importedProfileCookies = new Set<string>()
+  private originFaviconCache = new Map<string, string>()
+  private faviconsLoaded = false
+
+  async loadOriginFavicons(): Promise<void> {
+    if (this.faviconsLoaded) return
+    this.faviconsLoaded = true
+    try {
+      const filePath = join(app.getPath('userData'), 'origin-favicons.json')
+      const raw = await readFile(filePath, 'utf8')
+      const data = JSON.parse(raw)
+      if (data && typeof data === 'object') {
+        for (const [k, v] of Object.entries(data)) {
+          if (typeof v === 'string') this.originFaviconCache.set(k, v)
+        }
+      }
+    } catch {}
+  }
+
+  async setOriginFavicon(origin: string, favicon: string): Promise<void> {
+    if (!origin || !favicon || origin === 'null') return
+    if (this.originFaviconCache.get(origin) === favicon) return
+    this.originFaviconCache.set(origin, favicon)
+    try {
+      const filePath = join(app.getPath('userData'), 'origin-favicons.json')
+      const obj: Record<string, string> = {}
+      for (const [k, v] of this.originFaviconCache.entries()) {
+        obj[k] = v
+      }
+      await writeFile(filePath, JSON.stringify(obj, null, 2), { mode: 0o600 })
+    } catch {}
+  }
 
   constructor(
     private getState: () => any,
@@ -129,6 +160,7 @@ export class GroupWorkspaceManager {
           groupName: grp?.name || '默认分组',
         }
       }),
+      faviconCache: Object.fromEntries(this.originFaviconCache.entries()),
     }
   }
 
@@ -213,6 +245,7 @@ export class GroupWorkspaceManager {
       const pItems = await readProfileBookmarks(app.getPath('userData'), pid)
       this.profileBookmarks.set(pid, pItems)
     }
+    await this.loadOriginFavicons()
 
     // If workspace already exists for this group, focus and return
     const existing = this.workspaces.get(group.id)
@@ -578,17 +611,27 @@ export class GroupWorkspaceManager {
       this.broadcastState(ws)
     })
 
+    view.webContents.on('did-start-loading', () => {
+      tabEntry.loading = true
+      // 关键：新页面开始加载时立即清空旧页面的残留图标，彻底杜绝导航时旧图标错位传染！
+      tabEntry.favicon = undefined
+      this.broadcastState(ws)
+    })
+
     view.webContents.on('page-favicon-updated', (_event, favicons) => {
       if (favicons?.[0]) {
         tabEntry.favicon = favicons[0]
-        void this.syncBookmarkFavicon(tabEntry.url, favicons[0])
+        const curUrl = view.webContents.getURL()
+        if (curUrl && !curUrl.startsWith('about:') && !curUrl.startsWith('chrome://')) {
+          try {
+            const origin = new URL(curUrl).origin
+            void this.setOriginFavicon(origin, favicons[0]).then(() => {
+              this.broadcastState(ws)
+            })
+          } catch {}
+        }
         this.broadcastState(ws)
       }
-    })
-
-    view.webContents.on('did-start-loading', () => {
-      tabEntry.loading = true
-      this.broadcastState(ws)
     })
 
     view.webContents.on('did-stop-loading', () => {
@@ -596,6 +639,14 @@ export class GroupWorkspaceManager {
       tabEntry.url = view.webContents.getURL()
       tabEntry.canGoBack = view.webContents.canGoBack()
       tabEntry.canGoForward = view.webContents.canGoForward()
+      if (tabEntry.favicon && !tabEntry.url.startsWith('about:') && !tabEntry.url.startsWith('chrome://')) {
+        try {
+          const origin = new URL(tabEntry.url).origin
+          void this.setOriginFavicon(origin, tabEntry.favicon).then(() => {
+            this.broadcastState(ws)
+          })
+        } catch {}
+      }
       this.broadcastState(ws)
     })
 
@@ -691,27 +742,7 @@ export class GroupWorkspaceManager {
     return bms
   }
 
-  async syncBookmarkFavicon(url: string, favicon: string) {
-    if (!url || !favicon) return
-    let changed = false
-    for (const b of this.sharedBookmarks) {
-      if (b.url === url && b.favicon !== favicon) {
-        b.favicon = favicon
-        changed = true
-      }
-    }
-    for (const [, list] of this.profileBookmarks.entries()) {
-      for (const b of list) {
-        if (b.url === url && b.favicon !== favicon) {
-          b.favicon = favicon
-          changed = true
-        }
-      }
-    }
-    if (changed) {
-      await syncStoredBookmarkFavicon(app.getPath('userData'), undefined, url, favicon)
-    }
-  }
+
 
   async addBookmark(
     groupId: string,
