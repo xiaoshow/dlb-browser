@@ -97,6 +97,7 @@ function BookmarkFavicon({
 }) {
   const [loadError, setLoadError] = useState(false)
 
+  // 100% 纯本地提取，绝不向 Google 或任何第三方发起背景请求
   let faviconUrl = explicitFavicon
   if (!faviconUrl && url) {
     try {
@@ -114,14 +115,11 @@ function BookmarkFavicon({
           faviconUrl = match.favicon
         }
       }
-      if (!faviconUrl && hostname && hostname.includes('.')) {
-        faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`
-      }
     } catch {}
   }
 
   if (!faviconUrl || loadError) {
-    return <Globe size={13} className="arc-bm-icon" />
+    return <Globe size={11} className="arc-bm-icon" />
   }
 
   return (
@@ -131,11 +129,11 @@ function BookmarkFavicon({
       className="arc-bm-favicon"
       onError={() => setLoadError(true)}
       style={{
-        width: 14,
-        height: 14,
+        width: 13,
+        height: 13,
         borderRadius: 2,
         flexShrink: 0,
-        marginRight: 5,
+        marginRight: 3,
         objectFit: 'contain',
         verticalAlign: 'middle',
       }}
@@ -803,14 +801,6 @@ export function GroupWorkspace() {
                   >
                     <BookmarkFavicon url={bm.url} explicitFavicon={bm.favicon} tabs={workspace?.tabs} />
                     <span className="arc-bm-name">{cleanName}</span>
-                    <button
-                      type="button"
-                      className="arc-bm-del"
-                      title="删除此公共收藏"
-                      onClick={(e) => handleRemoveBookmark(e, bm.url, 'shared')}
-                    >
-                      ×
-                    </button>
                   </div>
                 )
               })
@@ -871,14 +861,6 @@ export function GroupWorkspace() {
                     >
                       <BookmarkFavicon url={bm.url} explicitFavicon={bm.favicon} tabs={workspace?.tabs} />
                       <span className="arc-bm-name">{cleanName}</span>
-                      <button
-                        type="button"
-                        className="arc-bm-del"
-                        title="删除此专属收藏"
-                        onClick={(e) => handleRemoveBookmark(e, bm.url, 'profile')}
-                      >
-                        ×
-                      </button>
                     </div>
                   )
                 })
