@@ -81,6 +81,10 @@
         "to": "native/prism-dock.png"
       },
       {
+        "from": "resources/native/prism-group-dock.png",
+        "to": "native/prism-group-dock.png"
+      },
+      {
         "from": "resources/native/prism-icon",
         "to": "native/prism-icon"
       }

@@ -219,14 +219,25 @@ export class GroupWorkspaceManager {
       return { ok: true }
     }
 
+    const groupIconPath = join(
+      app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'),
+      'native/prism-group-dock.png'
+    )
     const baseIconPath = join(
       app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'),
       'native/prism-dock.png'
     )
     let workspaceIcon: Electron.NativeImage | undefined
     try {
-      workspaceIcon = nativeImage.createFromPath(baseIconPath)
-    } catch {}
+      workspaceIcon = nativeImage.createFromPath(groupIconPath)
+      if (workspaceIcon.isEmpty()) {
+        workspaceIcon = nativeImage.createFromPath(baseIconPath)
+      }
+    } catch {
+      try {
+        workspaceIcon = nativeImage.createFromPath(baseIconPath)
+      } catch {}
+    }
 
     const win = new BrowserWindow({
       title: `${group.name} · Arc 聚合工作台`,
@@ -247,22 +258,33 @@ export class GroupWorkspaceManager {
       },
     })
 
-    // macOS Dock 图标与徽标支持 (保证聚合打开时在 Dock 醒目可见)
+    // macOS Dock 图标与徽标支持 (保证聚合打开时在 Dock 醒目可见并带专属装饰)
     if (process.platform === 'darwin' && app.dock) {
       try {
         app.dock.show()
         if (workspaceIcon && !workspaceIcon.isEmpty()) {
           app.dock.setIcon(workspaceIcon)
         }
-        app.dock.setBadge(profiles.length > 0 ? String(profiles.length) : '聚合')
+        app.dock.setBadge(profiles.length > 0 ? `🗂️ ${profiles.length}` : '聚合')
 
         const dockMenu = Menu.buildFromTemplate([
           {
-            label: `🌟 聚合工作台：${group.name}（${profiles.length} 个环境）`,
+            label: `✨ 聚合工作台：${group.name}（${profiles.length} 个环境）`,
             click: () => {
               if (!win.isDestroyed()) {
                 win.show()
                 win.focus()
+              }
+            },
+          },
+          { type: 'separator' },
+          {
+            label: `📌 切换到主管理面板`,
+            click: () => {
+              const mainWin = BrowserWindow.getAllWindows().find((w) => w.id !== win.id)
+              if (mainWin && !mainWin.isDestroyed()) {
+                mainWin.show()
+                mainWin.focus()
               }
             },
           },
@@ -289,14 +311,23 @@ export class GroupWorkspaceManager {
     win.on('focus', () => {
       if (process.platform === 'darwin' && app.dock) {
         app.dock.show()
-        app.dock.setBadge(profiles.length > 0 ? String(profiles.length) : '聚合')
+        if (workspaceIcon && !workspaceIcon.isEmpty()) {
+          app.dock.setIcon(workspaceIcon)
+        }
+        app.dock.setBadge(profiles.length > 0 ? `🗂️ ${profiles.length}` : '聚合')
       }
     })
     win.on('closed', () => {
       this.winToGroupId.delete(win.id)
       this.workspaces.delete(group.id)
-      // 如果没有其他聚合窗口在跑，清空 Dock 角标
+      // 如果没有其他聚合窗口在跑，清空 Dock 角标并切回默认图标
       if (process.platform === 'darwin' && app.dock && this.workspaces.size === 0) {
+        try {
+          const defaultIcon = nativeImage.createFromPath(baseIconPath)
+          if (!defaultIcon.isEmpty()) {
+            app.dock.setIcon(defaultIcon)
+          }
+        } catch {}
         app.dock.setBadge('')
       }
       // Destroy views
