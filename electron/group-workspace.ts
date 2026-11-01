@@ -505,12 +505,17 @@ export class GroupWorkspaceManager {
         contextIsolation: true,
         nodeIntegration: false,
         backgroundThrottling: true,
-        // 指纹浏览器防真实 IP 泄漏：当环境配置了 proxy-only 时，严格禁用非代理 UDP WebRTC 流量
-        ...(profile.webRTCPolicy === 'proxy-only'
-          ? { webRTCIPHandlingPolicy: 'disable_non_proxied_udp' as const }
-          : {}),
       },
     })
+
+    // 指纹浏览器真实 IP 防泄漏：当环境策略为 proxy-only 时，通过 WebContents 接口严格禁用非代理 UDP WebRTC 流量
+    if (profile.webRTCPolicy === 'proxy-only') {
+      try {
+        view.webContents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
+      } catch (e) {
+        console.warn(`[Workspace] WebRTC policy warning for ${profile.name}:`, e)
+      }
+    }
 
     // 恢复全套 Chrome 原生快捷键
     view.webContents.on('before-input-event', (event, input) => {
