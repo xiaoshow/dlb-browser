@@ -58,6 +58,7 @@ export class GroupWorkspaceManager {
   private winToGroupId = new Map<number, string>()
   private profileBookmarks = new Map<string, BookmarkItem[]>()
   private sharedBookmarks: BookmarkItem[] = []
+  private importedProfileCookies = new Set<string>()
 
   constructor(
     private getState: () => any,
@@ -411,11 +412,14 @@ export class GroupWorkspaceManager {
       })
     } catch {}
 
-    // Import existing cookies from native profile SQLite so it has identical login state
-    try {
-      await importNativeCookiesToSession(app.getPath('userData'), profile.id, ses)
-    } catch (e) {
-      console.warn(`[Workspace] Cookie import warning for ${profile.name}:`, e)
+    // 仅在首次初始化该 Profile 分区时导入一次现有 Cookies，绝不在每次建 Tab 时反复重放覆盖，避免触发 Google SIDTS 旋转封禁
+    if (!this.importedProfileCookies.has(profile.id)) {
+      try {
+        await importNativeCookiesToSession(app.getPath('userData'), profile.id, ses)
+        this.importedProfileCookies.add(profile.id)
+      } catch (e) {
+        console.warn(`[Workspace] Cookie import warning for ${profile.name}:`, e)
+      }
     }
 
     const view = new WebContentsView({
@@ -464,6 +468,7 @@ export class GroupWorkspaceManager {
       // 3. Focus Address Bar (Cmd/Ctrl + L)
       if (key === 'l' && cmdOrCtrl && !input.shift && !input.alt) {
         event.preventDefault()
+        ws.win.webContents.focus()
         try { ws.win.webContents.send('workspace:focus-omnibox') } catch {}
         return
       }
@@ -490,6 +495,12 @@ export class GroupWorkspaceManager {
         event.preventDefault()
         void this.createTabEntry(ws, profile, color, 'about:blank', tabId).then(newTab => {
           this.switchTab(ws.groupId, newTab.id)
+          setTimeout(() => {
+            if (!ws.win.isDestroyed()) {
+              ws.win.webContents.focus()
+              ws.win.webContents.send('workspace:focus-omnibox', { clear: true })
+            }
+          }, 30)
         })
         return
       }
@@ -613,8 +624,17 @@ export class GroupWorkspaceManager {
     }
 
     // Strictly inherit color and profileId
-    const newTab = await this.createTabEntry(ws, profile, sourceTab.color, url || 'about:blank', sourceTabId)
+    const targetUrl = url || 'about:blank'
+    const newTab = await this.createTabEntry(ws, profile, sourceTab.color, targetUrl, sourceTabId)
     this.switchTab(groupId, newTab.id)
+    if (targetUrl === 'about:blank') {
+      setTimeout(() => {
+        if (!ws.win.isDestroyed()) {
+          ws.win.webContents.focus()
+          ws.win.webContents.send('workspace:focus-omnibox', { clear: true })
+        }
+      }, 30)
+    }
   }
 
   async newTab(groupId: string, targetProfileId?: string, url?: string) {
@@ -634,6 +654,14 @@ export class GroupWorkspaceManager {
 
     const newTab = await this.createTabEntry(ws, profile, color, targetUrl, activeTab?.id)
     this.switchTab(groupId, newTab.id)
+    if (targetUrl === 'about:blank') {
+      setTimeout(() => {
+        if (!ws.win.isDestroyed()) {
+          ws.win.webContents.focus()
+          ws.win.webContents.send('workspace:focus-omnibox', { clear: true })
+        }
+      }, 30)
+    }
   }
 
   private getArcBgColor(hex?: string): string {

@@ -180,7 +180,7 @@ export interface BrowserAPI {
   onTriggerBookmarkAction?: (callback: (payload: { action: string; url?: string; bookmark?: any; scope?: 'shared' | 'profile' }) => void) => () => void
   workspaceMoveTab?: (sourceTabId: string, targetGroupId?: string, pinned?: boolean) => Promise<{ ok: boolean }>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
-  onFocusOmnibox?: (callback: () => void) => () => void
+  onFocusOmnibox?: (callback: (payload?: any) => void) => () => void
 }
 
 declare global {

@@ -215,6 +215,26 @@ export function GroupWorkspace() {
   const activeTabRef = useRef(activeTab)
   activeTabRef.current = activeTab
 
+  function focusAndSelectOmnibox(clear = false) {
+    setIsEditingUrl(true)
+    if (clear) {
+      setUrlInput('')
+    } else {
+      const cur = activeTabRef.current
+      if (cur?.url && cur.url !== 'about:blank') {
+        setUrlInput(cur.url)
+      }
+    }
+    setTimeout(() => {
+      if (omniboxInputRef.current) {
+        omniboxInputRef.current.focus()
+        if (!clear) {
+          omniboxInputRef.current.select()
+        }
+      }
+    }, 20)
+  }
+
   useEffect(() => {
     // 初始获取工作台状态
     void window.profileBrowser?.workspaceGetState().then((state) => {
@@ -249,9 +269,32 @@ export function GroupWorkspace() {
       }
     })
 
+    // 监听主进程发出的地址栏聚焦指令 (Cmd + L / Cmd + T)
+    const unsubFocus = window.profileBrowser?.onFocusOmnibox?.((payload: any) => {
+      focusAndSelectOmnibox(Boolean(payload?.clear))
+    })
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
+      if (cmdOrCtrl && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault()
+        focusAndSelectOmnibox(false)
+      } else if (cmdOrCtrl && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault()
+        const cur = activeTabRef.current
+        if (cur) {
+          void window.profileBrowser?.workspaceNewTab(cur.profileId, 'about:blank')
+        }
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+
     return () => {
       if (unsubscribe) unsubscribe()
       if (unsubTrigger) unsubTrigger()
+      if (unsubFocus) unsubFocus()
+      window.removeEventListener('keydown', handleGlobalKeyDown)
     }
   }, [])
 

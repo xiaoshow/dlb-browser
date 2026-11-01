@@ -40,5 +40,5 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   onTriggerBookmarkAction: (callback) => { const listener = (_event, payload) => callback(payload); ipcRenderer.on('workspace:trigger-bookmark', listener); return () => ipcRenderer.removeListener('workspace:trigger-bookmark', listener) },
   workspaceMoveTab: (sourceTabId, targetGroupId, pinned) => ipcRenderer.invoke('workspace:move-tab', sourceTabId, targetGroupId, pinned),
   onWorkspaceState: (callback) => { const listener = (_event, state) => callback(state); ipcRenderer.on('workspace:state', listener); return () => ipcRenderer.removeListener('workspace:state', listener) },
-  onFocusOmnibox: (callback) => { const listener = () => callback(); ipcRenderer.on('workspace:focus-omnibox', listener); return () => ipcRenderer.removeListener('workspace:focus-omnibox', listener) },
+  onFocusOmnibox: (callback) => { const listener = (_event, payload) => callback(payload); ipcRenderer.on('workspace:focus-omnibox', listener); return () => ipcRenderer.removeListener('workspace:focus-omnibox', listener) },
 })
