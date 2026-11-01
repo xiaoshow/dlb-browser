@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   workspaceUpdateBookmark: (profileId: string, oldUrl: string, newName: string, newUrl: string, scope?: 'shared' | 'profile') => ipcRenderer.invoke('workspace:update-bookmark', profileId, oldUrl, newName, newUrl, scope),
   workspaceMoveBookmarkScope: (profileId: string, bookmark: any, targetScope: 'shared' | 'profile') => ipcRenderer.invoke('workspace:move-bookmark-scope', profileId, bookmark, targetScope),
   workspaceReorderBookmarks: (profileId: string, bookmarks: any[], scope?: 'shared' | 'profile') => ipcRenderer.invoke('workspace:reorder-bookmarks', profileId, bookmarks, scope),
-  workspaceShowBookmarkMenu: (profileId: string, bookmark: any, scope: 'shared' | 'profile') => ipcRenderer.invoke('workspace:show-bookmark-menu', profileId, bookmark, scope),
+  workspaceShowBookmarkMenu: (profileId: string, bookmark: any, scope: 'shared' | 'profile', x?: number, y?: number) => ipcRenderer.invoke('workspace:show-bookmark-menu', profileId, bookmark, scope, x, y),
   workspaceSetModalActive: (active: boolean) => ipcRenderer.invoke('workspace:set-modal-active', active),
   onTriggerBookmarkAction: (callback: (payload: any) => void) => { const listener = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload); ipcRenderer.on('workspace:trigger-bookmark', listener); return () => ipcRenderer.removeListener('workspace:trigger-bookmark', listener) },
   workspaceMoveTab: (sourceTabId: string, targetGroupId?: string, pinned?: boolean) => ipcRenderer.invoke('workspace:move-tab', sourceTabId, targetGroupId, pinned),

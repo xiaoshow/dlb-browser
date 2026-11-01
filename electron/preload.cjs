@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   workspaceUpdateBookmark: (profileId, oldUrl, newName, newUrl, scope) => ipcRenderer.invoke('workspace:update-bookmark', profileId, oldUrl, newName, newUrl, scope),
   workspaceMoveBookmarkScope: (profileId, bookmark, targetScope) => ipcRenderer.invoke('workspace:move-bookmark-scope', profileId, bookmark, targetScope),
   workspaceReorderBookmarks: (profileId, bookmarks, scope) => ipcRenderer.invoke('workspace:reorder-bookmarks', profileId, bookmarks, scope),
-  workspaceShowBookmarkMenu: (profileId, bookmark, scope) => ipcRenderer.invoke('workspace:show-bookmark-menu', profileId, bookmark, scope),
+  workspaceShowBookmarkMenu: (profileId, bookmark, scope, x, y) => ipcRenderer.invoke('workspace:show-bookmark-menu', profileId, bookmark, scope, x, y),
   workspaceSetModalActive: (active) => ipcRenderer.invoke('workspace:set-modal-active', active),
   onTriggerBookmarkAction: (callback) => { const listener = (_event, payload) => callback(payload); ipcRenderer.on('workspace:trigger-bookmark', listener); return () => ipcRenderer.removeListener('workspace:trigger-bookmark', listener) },
   workspaceMoveTab: (sourceTabId, targetGroupId, pinned) => ipcRenderer.invoke('workspace:move-tab', sourceTabId, targetGroupId, pinned),

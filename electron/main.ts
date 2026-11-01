@@ -756,9 +756,9 @@ ipcMain.handle(
 )
 ipcMain.handle(
   'workspace:show-bookmark-menu',
-  async (event, profileId: string, bookmark: any, scope: 'shared' | 'profile') => {
+  async (event, profileId: string, bookmark: any, scope: 'shared' | 'profile', x?: number, y?: number) => {
     const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
-    if (ws) groupWorkspaceManager.showBookmarkContextMenu(ws.groupId, profileId, bookmark, scope)
+    if (ws) groupWorkspaceManager.showBookmarkContextMenu(ws.groupId, profileId, bookmark, scope, x, y)
     return { ok: true }
   }
 )

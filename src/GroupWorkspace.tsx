@@ -273,7 +273,9 @@ export function GroupWorkspace() {
     e.preventDefault()
     e.stopPropagation()
     if (!activeTab) return
-    void window.profileBrowser?.workspaceShowBookmarkMenu?.(activeTab.profileId, bm, scope)
+    const x = Math.round(e.clientX)
+    const y = Math.round(e.clientY)
+    void window.profileBrowser?.workspaceShowBookmarkMenu?.(activeTab.profileId, bm, scope, x, y)
   }
 
   function handleOpenEditModal(bm: { name: string; url: string } | null, scope: 'shared' | 'profile') {

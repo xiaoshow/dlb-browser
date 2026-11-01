@@ -310,10 +310,6 @@ export class GroupWorkspaceManager {
     win.on('resize', () => this.updateBounds(ws))
     win.on('focus', () => {
       if (process.platform === 'darwin' && app.dock) {
-        app.dock.show()
-        if (workspaceIcon && !workspaceIcon.isEmpty()) {
-          app.dock.setIcon(workspaceIcon)
-        }
         app.dock.setBadge(profiles.length > 0 ? `🗂️ ${profiles.length}` : '聚合')
       }
     })
@@ -778,10 +774,18 @@ export class GroupWorkspaceManager {
     groupId: string,
     profileId: string,
     bookmark: BookmarkItem | null,
-    scope: 'shared' | 'profile'
+    scope: 'shared' | 'profile',
+    x?: number,
+    y?: number
   ) {
     const ws = this.workspaces.get(groupId)
     if (!ws || ws.win.isDestroyed()) return
+
+    const popupOptions: Electron.PopupOptions = { window: ws.win }
+    if (typeof x === 'number' && typeof y === 'number' && x > 0 && y > 0) {
+      popupOptions.x = Math.round(x)
+      popupOptions.y = Math.round(y)
+    }
 
     if (bookmark) {
       const menu = Menu.buildFromTemplate([
@@ -842,7 +846,11 @@ export class GroupWorkspaceManager {
           },
         },
       ])
-      menu.popup({ window: ws.win })
+      setTimeout(() => {
+        if (!ws.win.isDestroyed()) {
+          menu.popup(popupOptions)
+        }
+      }, 20)
     } else {
       const menu = Menu.buildFromTemplate([
         {
@@ -855,7 +863,11 @@ export class GroupWorkspaceManager {
           },
         },
       ])
-      menu.popup({ window: ws.win })
+      setTimeout(() => {
+        if (!ws.win.isDestroyed()) {
+          menu.popup(popupOptions)
+        }
+      }, 20)
     }
   }
 
