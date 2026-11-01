@@ -1,6 +1,6 @@
 {
   "name": "prism-fingerprint-browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Prism fingerprint browser with stable per-profile fingerprints, isolated sessions and VLESS proxies.",
   "main": "dist-electron/main.js",
