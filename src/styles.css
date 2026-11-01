@@ -1404,31 +1404,12 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   flex-shrink: 0;
 }
 
-.arc-shared-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #1a73e8 !important;
-  background: #e8f0fe;
-  padding: 2px 7px;
-  border-radius: 4px;
-  margin-right: 2px;
-  border: 1px solid #d2e3fc;
+.arc-folder-item {
+  font-weight: 500;
+  color: #3c4043 !important;
 }
-.arc-profile-bm-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #202124;
-  background: #f8f9fa;
-  padding: 2px 8px;
-  border-radius: 4px;
-  margin-right: 2px;
-  border: 1px solid #dadce0;
+.arc-folder-item:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
 }
 .arc-profile-bm-dot {
   width: 7px;

@@ -86,6 +86,27 @@ export function getArcTheme(hex?: string): ArcPalette {
   return ARC_PALETTES[0]
 }
 
+function ChromeFolderIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0, marginRight: 3, verticalAlign: 'middle' }}
+    >
+      <path
+        d="M1.5 3.5C1.5 2.67 2.17 2 3 2H6.5L8 3.5H13C13.83 3.5 14.5 4.17 14.5 5V12.5C14.5 13.33 13.83 14 13 14H3C2.17 14 1.5 13.33 1.5 12.5V3.5Z"
+        fill="#FDD663"
+        stroke="#F9AB00"
+        strokeWidth="0.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function BookmarkFavicon({
   url,
   explicitFavicon,
@@ -118,26 +139,51 @@ function BookmarkFavicon({
     } catch {}
   }
 
-  if (!faviconUrl || loadError) {
-    return <Globe size={11} className="arc-bm-icon" />
+  if (faviconUrl && !loadError) {
+    return (
+      <img
+        src={faviconUrl}
+        alt=""
+        className="arc-bm-favicon"
+        onError={() => setLoadError(true)}
+        style={{
+          width: 13,
+          height: 13,
+          borderRadius: 2,
+          flexShrink: 0,
+          marginRight: 3,
+          objectFit: 'contain',
+          verticalAlign: 'middle',
+        }}
+      />
+    )
   }
 
+  // 官方 Chrome 原版书签默认白纸折角图标 (零网络请求，纯 SVG 绘制)
   return (
-    <img
-      src={faviconUrl}
-      alt=""
-      className="arc-bm-favicon"
-      onError={() => setLoadError(true)}
-      style={{
-        width: 13,
-        height: 13,
-        borderRadius: 2,
-        flexShrink: 0,
-        marginRight: 3,
-        objectFit: 'contain',
-        verticalAlign: 'middle',
-      }}
-    />
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0, marginRight: 3, verticalAlign: 'middle' }}
+    >
+      <path
+        d="M3.5 2C2.67 2 2 2.67 2 3.5V12.5C2 13.33 2.67 14 3.5 14H12.5C13.33 14 14 13.33 14 12.5V5.5L10.5 2H3.5Z"
+        fill="#FFFFFF"
+        stroke="#70757A"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 2V5.5H13.5"
+        fill="#DADCE0"
+        stroke="#70757A"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
@@ -245,7 +291,7 @@ export function GroupWorkspace() {
     const targetPid = profileId || currentProfile?.id
     if (!targetPid) return
     setIsEditingUrl(false)
-    void window.profileBrowser?.workspaceNewTab(targetPid, 'https://www.google.com')
+    void window.profileBrowser?.workspaceNewTab(targetPid, 'about:blank')
   }
 
   function handleGoBack() {
@@ -774,9 +820,10 @@ export function GroupWorkspace() {
             onContextMenu={(e) => handleShowBookmarkContextMenu(e, null, 'shared')}
             title="公共收藏区：组内所有号共用。拖拽小锁至此可添加公共书签"
           >
-            <span className="arc-shared-badge">
-              <Globe size={11} /> 公共收藏
-            </span>
+            <div className="arc-bookmark-pill official-bookmark-pill arc-folder-item" title="公共收藏夹（所有环境共用）">
+              <ChromeFolderIcon />
+              <span className="arc-bm-name">公共收藏</span>
+            </div>
             {sharedBookmarks.length > 0 ? (
               sharedBookmarks.map((bm, idx) => {
                 const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
@@ -826,17 +873,6 @@ export function GroupWorkspace() {
               onContextMenu={(e) => handleShowBookmarkContextMenu(e, null, 'profile')}
               title={`专属收藏区：仅 #${activeTab.profileNumber} ${activeTab.profileName} 独享`}
             >
-              <span
-                className="arc-profile-bm-badge"
-                style={{
-                  borderColor: `${theme.highlight}55`,
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                }}
-              >
-                <span className="arc-profile-bm-dot" style={{ backgroundColor: theme.highlight }} />
-                <User size={11} />
-                <span>#{activeTab.profileNumber} 专属</span>
-              </span>
               {profileBookmarks.length > 0 ? (
                 profileBookmarks.map((bm, idx) => {
                   const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
