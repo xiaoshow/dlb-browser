@@ -1,8 +1,9 @@
 import { timezoneLabel } from './timezones'
 import { useState, useEffect } from 'react'
-import { Search, Play, Square, Fingerprint, Globe2, Settings2, Monitor, Network, RefreshCw, MapPin, Cpu, Link2, ArrowLeftRight, Trash2, Download, Upload, Cookie, Folder, ChevronRight, ChevronDown, Pencil, LayoutGrid } from 'lucide-react'
+import { Search, Play, Square, Fingerprint, Globe2, Settings2, Monitor, Network, RefreshCw, MapPin, Cpu, Link2, ArrowLeftRight, Trash2, Download, Upload, Cookie, Folder, ChevronRight, ChevronDown, Pencil, LayoutGrid, Copy } from 'lucide-react'
 import type { AppState, BrowserProfile, ProxyTestResult } from './types'
-import { resolveProfileAvatar } from './notion-avatars'
+import { resolveProfileAvatar, pickNotionAvatar } from './notion-avatars'
+import { stableFingerprint } from './profile-fingerprint'
 
 // Notion-style tags, persisted in profile.alias as "a, b, c" so the native toolbar badge keeps working.
 export const splitTags = (alias?: string) => [...new Set((alias ?? '').split(/[,，]/).map(t => t.trim()).filter(Boolean))]
@@ -104,6 +105,76 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
     setConfirmDeleteIds(null)
     setSelected(cur => cur.filter(id => !ids.includes(id)))
     await onDelete(ids)
+  }
+
+  function duplicateProfile(orig: BrowserProfile) {
+    const id = crypto.randomUUID()
+    const number = Math.max(state.nextProfileNumber || 1, ...state.profiles.map(p => (p.number || 0) + 1))
+    const colors = ['#ef665f','#e79b3f','#44a97b','#4c8fe6','#7a68e8','#cf659e']
+    const newProfile: BrowserProfile = {
+      id,
+      number,
+      name: `${orig.name} (副本)`,
+      alias: orig.alias ? `${orig.alias} (副本)` : undefined,
+      color: colors[state.profiles.length % colors.length],
+      avatar: pickNotionAvatar(number - 1),
+      proxyId: orig.proxyId, // 唯一继承项：只dup用的Proxy！
+      timezone: 'auto',
+      locale: 'auto',
+      fingerprint: stableFingerprint(id), // 全新独立指纹，绝对不共享旧指纹
+      webRTCPolicy: 'proxy-only',
+      startUrl: orig.startUrl || 'about:blank',
+      userAgentMode: 'real',
+      groupId: orig.groupId || state.groups[0]?.id || 'group-daily',
+    }
+
+    const nextState: AppState = {
+      ...state,
+      nextProfileNumber: number + 1,
+      profiles: [...state.profiles, newProfile],
+    }
+    onOrganize(nextState)
+    void window.profileBrowser?.saveState(nextState)
+  }
+
+  function duplicateSelected() {
+    if (!selected.length) return
+    let currentNumber = Math.max(state.nextProfileNumber || 1, ...state.profiles.map(p => (p.number || 0) + 1))
+    const colors = ['#ef665f','#e79b3f','#44a97b','#4c8fe6','#7a68e8','#cf659e']
+    const newProfiles: BrowserProfile[] = []
+
+    for (const sid of selected) {
+      const orig = state.profiles.find(p => p.id === sid)
+      if (!orig) continue
+      const id = crypto.randomUUID()
+      const number = currentNumber++
+      newProfiles.push({
+        id,
+        number,
+        name: `${orig.name} (副本)`,
+        alias: orig.alias ? `${orig.alias} (副本)` : undefined,
+        color: colors[(state.profiles.length + newProfiles.length) % colors.length],
+        avatar: pickNotionAvatar(number - 1),
+        proxyId: orig.proxyId, // 唯一继承项：只dup用的Proxy！
+        timezone: 'auto',
+        locale: 'auto',
+        fingerprint: stableFingerprint(id),
+        webRTCPolicy: 'proxy-only',
+        startUrl: orig.startUrl || 'about:blank',
+        userAgentMode: 'real',
+        groupId: orig.groupId || state.groups[0]?.id || 'group-daily',
+      })
+    }
+
+    if (!newProfiles.length) return
+    const nextState: AppState = {
+      ...state,
+      nextProfileNumber: currentNumber,
+      profiles: [...state.profiles, ...newProfiles],
+    }
+    onOrganize(nextState)
+    void window.profileBrowser?.saveState(nextState)
+    setSelected([])
   }
 
   // 快捷键支持：Cmd+A / Ctrl+A 全选或反选当前环境列表，Esc 清空选择
@@ -253,6 +324,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       </button>
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>onProtect(selected)}><Fingerprint size={17}/>启用固定保护</button>
       <button className="secondary danger-btn" disabled={!selected.length||!!busy.length} onClick={()=>setConfirmDeleteIds(selected)}><Trash2 size={15}/>删除所选{selected.length ? ` (${selected.length})` : ''}</button>
+      <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>duplicateSelected()} title="复制所选环境（仅继承代理网络配置，全新指纹环境）"><Copy size={15}/>复制所选{selected.length ? ` (${selected.length})` : ''}</button>
       <select aria-label="移动所选到文件夹" disabled={!selected.length} value={moveTo} onChange={e=>{const id=e.target.value;if(!id)return;onOrganize({...state,profiles:state.profiles.map(p=>selected.includes(p.id)?{...p,groupId:id}:p)});setSelected([]);setMoveTo('')}}><option value="">移动所选到文件夹…</option>{state.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select>
       <span/>
       <small><i className="live-dot"/>{running.length} 个运行中</small>
@@ -320,6 +392,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
           <div className="manager-row-actions">
             <button className="primary" disabled={busy.includes(p.id)} onClick={()=>void operate(p)}><Play size={14}/>{live?'显示':'启动'}</button>
             {live&&<button className="secondary stop-profile" title={`停止 ${p.name}`} onClick={()=>void operate(p,true)}><Square size={13}/>停止</button>}
+            <button className="icon-button" title={`复制 ${p.name}（仅继承代理网络，全新指纹环境）`} onClick={()=>duplicateProfile(p)}><Copy size={16}/></button>
             <button className="icon-button" title={`导入 / 导出 ${p.name} 的 Cookie`} onClick={()=>onCookieModal(p)}><Cookie size={17}/></button>
             <button className="icon-button" title={`设置 ${p.name}`} onClick={()=>onEdit(p)}><Settings2 size={17}/></button>
             <button className="icon-button danger-icon" title={`删除 ${p.name}`} onClick={()=>setConfirmDeleteIds([p.id])}><Trash2 size={16}/></button>

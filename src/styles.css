@@ -863,11 +863,11 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   display: flex;
 }
 
-/* Left Sidebar (250px) */
+/* Left Sidebar (260px) */
 .arc-sidebar {
-  width: 250px;
-  min-width: 250px;
-  max-width: 250px;
+  width: 260px;
+  min-width: 260px;
+  max-width: 260px;
   height: 100vh;
   background: var(--arc-sidebar, #7ce0aa);
   transition: background-color 0.25s ease;
@@ -1445,4 +1445,167 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+/* Left Sidebar Omnibox */
+.arc-sidebar-omnibox-form {
+  width: 100%;
+}
+.arc-sidebar-omnibox {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 9px;
+  padding: 0 8px;
+  height: 32px;
+  gap: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.arc-sidebar-omnibox:focus-within {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: var(--arc-highlight);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
+}
+.arc-sidebar-omnibox-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--arc-text);
+  font-weight: 500;
+}
+.arc-sidebar-star-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.arc-sidebar-star-btn .star-filled {
+  fill: #f59e0b;
+  color: #f59e0b;
+}
+.arc-sidebar-star-btn .star-outline {
+  color: #64748b;
+}
+
+/* ⭐ 左侧共用收藏夹栏 */
+.arc-sidebar-bookmarks-box {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.arc-sidebar-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--arc-text);
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.arc-box-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.arc-sidebar-bookmarks-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+.arc-sidebar-bookmarks-pills::-webkit-scrollbar {
+  display: none;
+}
+.arc-bookmarks-empty-tip {
+  font-size: 11px;
+  color: var(--arc-text);
+  opacity: 0.6;
+  padding: 2px 0;
+}
+
+/* 📌 常驻 / 拖拽收藏区 */
+.arc-pinned-section {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.1);
+  transition: background-color 0.15s ease;
+}
+.arc-pinned-section.drag-over {
+  background: rgba(255, 255, 255, 0.45);
+  outline: 2px dashed var(--arc-highlight);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.arc-section-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--arc-text);
+  margin-bottom: 6px;
+}
+.arc-pinned-items-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.arc-pinned-placeholder {
+  font-size: 11px;
+  color: var(--arc-text);
+  opacity: 0.6;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+/* 📁 分级标签分组区 */
+.arc-profile-section {
+  margin-bottom: 8px;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+.arc-profile-section.drag-over {
+  background: rgba(255, 255, 255, 0.35);
+  outline: 2px dashed var(--arc-highlight);
+}
+.arc-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--arc-text);
+  user-select: none;
+}
+.arc-section-header:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.arc-group-toggle-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  color: var(--arc-text);
+}
+.arc-tab-item[draggable="true"] {
+  cursor: grab;
+}
+.arc-tab-item.dragging {
+  opacity: 0.4;
+}
+
 

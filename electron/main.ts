@@ -644,6 +644,7 @@ ipcMain.handle('workspace:mode', async () => ({ ok: true }))
 
 const groupWorkspaceManager = new GroupWorkspaceManager(
   () => appStateCache || defaultState,
+  saveState,
   configureProxy,
   () => join(dirname, '../electron/preload.cjs'),
   (groupId) => {
@@ -714,6 +715,11 @@ ipcMain.handle('workspace:add-bookmark', async (event, profileId: string, name: 
 ipcMain.handle('workspace:remove-bookmark', async (event, profileId: string, url: string) => {
   const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
   if (ws) await groupWorkspaceManager.removeBookmark(ws.groupId, profileId, url)
+  return { ok: true }
+})
+ipcMain.handle('workspace:move-tab', (event, sourceTabId: string, targetGroupId?: string, pinned?: boolean) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) groupWorkspaceManager.moveTab(ws.groupId, sourceTabId, targetGroupId, pinned)
   return { ok: true }
 })
 

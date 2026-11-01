@@ -8,9 +8,13 @@ import {
   X,
   Globe,
   Lock,
-  ShieldCheck,
+  Pin,
+  Folder,
+  ChevronRight,
+  ChevronDown,
   Palette,
   Star,
+  ShieldCheck,
 } from 'lucide-react'
 
 export interface ArcPalette {
@@ -67,10 +71,13 @@ export function GroupWorkspace() {
   const [urlInput, setUrlInput] = useState('')
   const [isEditingUrl, setIsEditingUrl] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
+  const [dragTargetId, setDragTargetId] = useState<string | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const omniboxInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    // Initial fetch
+    // 初始获取工作台状态
     void window.profileBrowser?.workspaceGetState().then((state) => {
       if (state) {
         setWorkspace(state)
@@ -79,7 +86,7 @@ export function GroupWorkspace() {
       }
     })
 
-    // Listen for broadcast updates
+    // 监听广播更新
     const unsubscribe = window.profileBrowser?.onWorkspaceState((state) => {
       setWorkspace(state)
       const active = state.tabs.find((t) => t.id === state.activeTabId)
@@ -95,14 +102,13 @@ export function GroupWorkspace() {
 
   const activeTab = workspace?.tabs.find((t) => t.id === workspace.activeTabId)
 
-  // Sync address bar input when active tab changes and user isn't actively editing
   useEffect(() => {
     if (activeTab && !isEditingUrl) {
       setUrlInput(activeTab.url)
     }
   }, [activeTab?.id, activeTab?.url, isEditingUrl])
 
-  // Extract distinct profiles in this group
+  // Distinct profiles in this group
   const profilesMap = new Map<string, { id: string; name: string; number: number; color: string }>()
   workspace?.tabs.forEach((tab) => {
     if (!profilesMap.has(tab.profileId)) {
@@ -115,8 +121,6 @@ export function GroupWorkspace() {
     }
   })
   const profiles = Array.from(profilesMap.values())
-
-  // CRITICAL RULE 1: Theme color is determined by the active tab's profile!
   const currentProfile = profiles.find((p) => p.id === activeTab?.profileId) || profiles[0]
   const theme = getArcTheme(currentProfile?.color)
 
@@ -130,21 +134,11 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceCloseTab(tabId)
   }
 
-  function handleNewTabForProfile(profileId: string) {
-    void window.profileBrowser?.workspaceNewTab(profileId)
-  }
-
-  function handleNavigate(e: React.FormEvent) {
-    e.preventDefault()
-    if (!activeTab || !urlInput.trim()) return
+  function handleNewTabForProfile(profileId?: string) {
+    const targetPid = profileId || currentProfile?.id
+    if (!targetPid) return
     setIsEditingUrl(false)
-    void window.profileBrowser?.workspaceNavigate(activeTab.id, urlInput)
-  }
-
-  function handlePickColor(palette: ArcPalette) {
-    if (!currentProfile) return
-    void window.profileBrowser?.workspaceSetProfileColor(currentProfile.id, palette.dot)
-    setShowColorPicker(false)
+    void window.profileBrowser?.workspaceNewTab(targetPid, 'https://www.google.com')
   }
 
   function handleGoBack() {
@@ -159,11 +153,23 @@ export function GroupWorkspace() {
     if (activeTab) void window.profileBrowser?.workspaceReload(activeTab.id)
   }
 
+  function handleNavigate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!activeTab) return
+    const target = urlInput.trim()
+    if (!target) return
+    setIsEditingUrl(false)
+    void window.profileBrowser?.workspaceNavigate(activeTab.id, target)
+  }
+
+  function handlePickColor(pal: ArcPalette) {
+    if (!currentProfile) return
+    void window.profileBrowser?.workspaceSetProfileColor(currentProfile.id, pal.bg)
+  }
+
   const isBookmarked = Boolean(
-    activeTab &&
-      (workspace?.bookmarks || []).some(
-        (b) => b.url === activeTab.url || (activeTab.url && b.url.startsWith(activeTab.url))
-      )
+    activeTab?.url &&
+      workspace?.bookmarks?.some((b) => b.url === activeTab.url || b.url === activeTab.url.replace(/\/$/, ''))
   )
 
   function handleToggleBookmark() {
@@ -179,31 +185,7 @@ export function GroupWorkspace() {
     }
   }
 
-  // 快捷键支持：Cmd+L 聚焦地址栏，Cmd+D 添加/切换收藏
-  useEffect(() => {
-    const focusOmnibox = () => {
-      omniboxInputRef.current?.focus()
-      omniboxInputRef.current?.select()
-    }
-    const unsub = window.profileBrowser?.onFocusOmnibox?.(focusOmnibox)
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey
-      if (isCmdOrCtrl && e.key.toLowerCase() === 'l' && !e.shiftKey && !e.altKey) {
-        e.preventDefault()
-        focusOmnibox()
-      }
-      if (isCmdOrCtrl && e.key.toLowerCase() === 'd' && !e.shiftKey && !e.altKey) {
-        e.preventDefault()
-        handleToggleBookmark()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      unsub?.()
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [activeTab, isBookmarked])
-
+  // 100% 保证可点击：直接在当前活动 Tab 中打开收藏网址
   function handleBookmarkClick(url: string) {
     if (!activeTab) return
     setUrlInput(url)
@@ -217,14 +199,83 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, url)
   }
 
+  // 快捷键支持 (Cmd+L / Cmd+D)
+  useEffect(() => {
+    const unsub = window.profileBrowser?.onFocusOmnibox?.(() => {
+      omniboxInputRef.current?.focus()
+      omniboxInputRef.current?.select()
+    })
+
+    function handleKeyDown(e: KeyboardEvent) {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'l') {
+        e.preventDefault()
+        omniboxInputRef.current?.focus()
+        omniboxInputRef.current?.select()
+      } else if (isCmdOrCtrl && e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        handleToggleBookmark()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      unsub?.()
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activeTab, isBookmarked])
+
+  // 拖拽常驻/收藏
+  const handleDropToPinned = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const sourceTabId = e.dataTransfer.getData('text/plain') || draggingTabId
+    if (sourceTabId) {
+      void window.profileBrowser?.workspaceMoveTab?.(sourceTabId, undefined, true)
+    }
+    setDraggingTabId(null)
+    setDragTargetId(null)
+  }
+
+  // 拖拽到指定分级分组
+  const handleDropToGroup = (e: React.DragEvent, targetGroupId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const sourceTabId = e.dataTransfer.getData('text/plain') || draggingTabId
+    if (sourceTabId) {
+      void window.profileBrowser?.workspaceMoveTab?.(sourceTabId, targetGroupId, false)
+    }
+    setDraggingTabId(null)
+    setDragTargetId(null)
+  }
+
+  const toggleGroupCollapse = (grpId: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [grpId]: !prev[grpId] }))
+  }
+
   if (!workspace) {
     return (
       <div className="arc-loading-screen" style={{ backgroundColor: '#8ee2b5' }}>
         <div className="arc-spinner" />
-        <p>正在启动 Arc 聚合工作台…</p>
+        <p>正在启动聚合工作台…</p>
       </div>
     )
   }
+
+  // 分离出常驻标签与分组标签
+  const pinnedTabs = workspace.tabs.filter((t) => t.pinned)
+  const unpinnedTabs = workspace.tabs.filter((t) => !t.pinned)
+
+  // 按分组聚合
+  const groupMap = new Map<string, { id: string; name: string; tabs: WorkspaceTab[] }>()
+  unpinnedTabs.forEach((tab) => {
+    const grpId = tab.groupId || 'default'
+    const grpName = tab.groupName || '默认分组'
+    if (!groupMap.has(grpId)) {
+      groupMap.set(grpId, { id: grpId, name: grpName, tabs: [] })
+    }
+    groupMap.get(grpId)!.tabs.push(tab)
+  })
+  const tabGroups = Array.from(groupMap.values())
 
   return (
     <div
@@ -236,242 +287,93 @@ export function GroupWorkspace() {
           '--arc-sidebar': theme.sidebar,
           '--arc-highlight': theme.highlight,
           '--arc-text': theme.text,
+          '--arc-dot': theme.dot,
         } as React.CSSProperties
       }
     >
-      {/* 1. Left Arc Sidebar (250px) */}
+      {/* 左侧全功能侧边栏：260px 宽度，所有点击与拖拽 100% 丝滑无遮挡 */}
       <aside className="arc-sidebar">
-        {/* Top Header: Traffic light spacer */}
+        {/* 顶部交通灯安全边距 + 导航控制器 */}
         <div className="arc-sidebar-top">
           <div className="arc-traffic-spacer" />
-          <div className="arc-group-pill" title={`当前分组：${workspace.groupName}`}>
-            <span className="arc-group-dot" style={{ backgroundColor: theme.highlight }} />
-            <span className="arc-group-name">{workspace.groupName}</span>
-          </div>
-        </div>
-
-        {/* Profile Color Switcher Bar ("我可以切颜色") */}
-        <div className="arc-color-switcher-bar">
-          <div className="arc-color-header">
-            <span>
-              #{currentProfile?.number} {currentProfile?.name}
-            </span>
+          <div className="arc-nav-controls">
             <button
               type="button"
-              className="arc-color-toggle-btn"
-              title="切换此账号的 Arc 主题颜色"
-              onClick={() => setShowColorPicker(!showColorPicker)}
-            >
-              <Palette size={13} />
-              <span>切颜色</span>
-            </button>
-          </div>
-
-          {/* Color Dots Row */}
-          <div className="arc-palette-dots-row">
-            {ARC_PALETTES.map((pal) => {
-              const isSelected = getArcTheme(currentProfile?.color).id === pal.id
-              return (
-                <button
-                  key={pal.id}
-                  type="button"
-                  className={`arc-palette-dot-btn ${isSelected ? 'selected' : ''}`}
-                  style={{ backgroundColor: pal.dot }}
-                  title={pal.name}
-                  onClick={() => handlePickColor(pal)}
-                />
-              )
-            })}
-          </div>
-        </div>
-
-        {/* 2. Unified Tabs List ("两个profile放在的tab列在一起") */}
-        <div className="arc-tabs-list">
-          {profiles.map((p) => {
-            const profileTabs = workspace.tabs.filter((t) => t.profileId === p.id)
-            const pTheme = getArcTheme(p.color)
-            const isProfileActive = p.id === currentProfile?.id
-
-            return (
-              <div key={p.id} className="arc-profile-section">
-                {/* Profile Section Header */}
-                <div className={`arc-section-header ${isProfileActive ? 'active-section' : ''}`}>
-                  <span className="arc-section-dot" style={{ backgroundColor: pTheme.dot }} />
-                  <span className="arc-section-name">
-                    #{p.number} {p.name}
-                  </span>
-                  <span className="arc-section-count">{profileTabs.length}</span>
-                  <button
-                    type="button"
-                    className="arc-section-add-btn"
-                    title={`为 #${p.number} ${p.name} 新开相邻标签页`}
-                    onClick={() => handleNewTabForProfile(p.id)}
-                  >
-                    <Plus size={13} />
-                  </button>
-                </div>
-
-                {/* Tabs for this Profile */}
-                <div className="arc-section-tabs">
-                  {profileTabs.map((tab) => {
-                    const isActive = tab.id === workspace.activeTabId
-                    return (
-                      <div
-                        key={tab.id}
-                        className={`arc-tab-item ${isActive ? 'active' : ''}`}
-                        onClick={() => handleSwitchTab(tab.id)}
-                        title={`${tab.profileName} · ${tab.title || tab.url}`}
-                      >
-                        {/* Profile Color Dot */}
-                        <span className="arc-tab-dot" style={{ backgroundColor: pTheme.dot }} />
-
-                        {/* Favicon */}
-                        {tab.favicon ? (
-                          <img
-                            src={tab.favicon}
-                            alt=""
-                            className="arc-tab-favicon"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none'
-                            }}
-                          />
-                        ) : (
-                          <Globe size={14} className="arc-tab-default-icon" style={{ color: pTheme.highlight }} />
-                        )}
-
-                        {/* Title */}
-                        <span className="arc-tab-title">{tab.title || tab.profileName}</span>
-
-                        {/* Close Button */}
-                        <button
-                          type="button"
-                          className="arc-tab-close-btn"
-                          aria-label="关闭标签"
-                          onClick={(e) => handleCloseTab(e, tab.id)}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Bottom Bar: Total Tabs Count & Quick Add */}
-        <div className="arc-sidebar-bottom">
-          <small className="arc-isolation-note" title="各 Profile 独立持久化 Partition，严格物理隔离不串号">
-            <ShieldCheck size={13} /> 物理隔离 · 绝对零串号
-          </small>
-          <button
-            type="button"
-            className="arc-bottom-new-btn"
-            title="在当前激活账号下新建标签页"
-            onClick={() => handleNewTabForProfile(currentProfile?.id)}
-          >
-            <Plus size={15} />
-            <span>New Tab</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* 2. Main Content Area */}
-      <main className="arc-main-area">
-        {/* Chrome-Style Permanent Top Address Bar ("原版的Google Chrome一样在上面吧，不要弹出来了") */}
-        <header className="arc-chrome-toolbar">
-          {/* Nav Buttons */}
-          <div className="arc-chrome-nav">
-            <button
-              type="button"
-              className="arc-chrome-btn"
+              className="arc-nav-btn"
               disabled={!activeTab?.canGoBack}
               onClick={handleGoBack}
               title="后退"
             >
-              <ArrowLeft size={16} />
+              <ArrowLeft size={15} />
             </button>
             <button
               type="button"
-              className="arc-chrome-btn"
+              className="arc-nav-btn"
               disabled={!activeTab?.canGoForward}
               onClick={handleGoForward}
               title="前进"
             >
-              <ArrowRight size={16} />
+              <ArrowRight size={15} />
             </button>
             <button
               type="button"
-              className={`arc-chrome-btn ${activeTab?.loading ? 'spin-icon' : ''}`}
+              className={`arc-nav-btn ${activeTab?.loading ? 'spin-icon' : ''}`}
               onClick={handleReload}
               title="刷新"
             >
-              <RotateCw size={15} />
+              <RotateCw size={14} />
             </button>
           </div>
+        </div>
 
-          {/* Active Profile Status Pill */}
-          {activeTab && (
-            <div
-              className="arc-chrome-profile-badge"
-              style={{
-                borderColor: `${theme.highlight}44`,
-                backgroundColor: 'rgba(255, 255, 255, 0.65)',
-              }}
-              title={`当前环境：${activeTab.profileName}（独立 Cookie，隔离运行）`}
-            >
-              <span className="arc-badge-dot" style={{ backgroundColor: theme.highlight }} />
-              <span className="arc-badge-text">
-                #{activeTab.profileNumber} {activeTab.profileName}
-              </span>
-            </div>
-          )}
-
-          {/* Chrome-Style Permanent Address / Omnibox Input Form */}
-          <form className="arc-chrome-omnibox-form" onSubmit={handleNavigate}>
-            <div className="arc-chrome-omnibox">
-              <Lock size={13} className="arc-lock-icon" />
+        {/* 左侧原生地址栏 / 搜索框 */}
+        <div className="arc-search-pill-wrapper">
+          <form className="arc-sidebar-omnibox-form" onSubmit={handleNavigate}>
+            <div className="arc-sidebar-omnibox">
+              <Lock size={12} className="arc-lock-icon" />
               <input
                 ref={omniboxInputRef}
                 type="text"
-                className="arc-chrome-input"
+                className="arc-sidebar-omnibox-input"
                 value={urlInput}
                 onFocus={() => setIsEditingUrl(true)}
                 onBlur={() => setIsEditingUrl(false)}
                 onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="输入网址或 Google 搜索…"
+                placeholder="输入网址或回车搜索 (⌘L)…"
                 spellCheck={false}
               />
               <button
                 type="button"
-                className={`arc-omnibox-star-btn ${isBookmarked ? 'bookmarked' : ''}`}
+                className={`arc-sidebar-star-btn ${isBookmarked ? 'bookmarked' : ''}`}
                 onClick={handleToggleBookmark}
-                title={isBookmarked ? '已收藏（点击取消收藏）' : '收藏此页面到书签栏 (Cmd+D)'}
+                title={isBookmarked ? '已收藏（点击取消）' : '收藏此页到共用收藏夹 (⌘D)'}
               >
-                <Star size={14} className={isBookmarked ? 'star-filled' : 'star-outline'} />
+                <Star size={13} className={isBookmarked ? 'star-filled' : 'star-outline'} />
               </button>
             </div>
           </form>
-        </header>
+        </div>
 
-        {/* Chrome-Style Permanent Bookmarks Bar ("shoucang一直展示 - 共用收藏") */}
-        <div className="arc-chrome-bookmarks-bar">
-          <div className="arc-bookmarks-items-row">
-            <span className="arc-shared-badge" title="当前聚合窗口中所有环境共用此套收藏夹">
-              <Star size={11} />共用收藏
+        {/* ⭐ 共用收藏夹栏（放在左侧侧边栏内，绝对不被 WebContentsView 遮盖，100% 能够点击秒开！） */}
+        <div className="arc-sidebar-bookmarks-box">
+          <div className="arc-sidebar-box-header">
+            <span className="arc-box-title">
+              <Star size={12} /> 共用收藏夹
             </span>
-            {workspace?.bookmarks && workspace.bookmarks.length > 0 ? (
+            <small>{workspace.bookmarks?.length || 0} 个</small>
+          </div>
+          <div className="arc-sidebar-bookmarks-pills">
+            {workspace.bookmarks && workspace.bookmarks.length > 0 ? (
               workspace.bookmarks.map((bm) => (
                 <div
                   key={bm.url}
                   className="arc-bookmark-pill"
                   onClick={() => handleBookmarkClick(bm.url)}
-                  title={`${bm.name}\n${bm.url}`}
+                  title={`${bm.name}\n${bm.url}（点击在当前环境打开）`}
                   role="button"
                   tabIndex={0}
                 >
-                  <Globe size={12} className="arc-bm-icon" />
+                  <Globe size={11} className="arc-bm-icon" />
                   <span className="arc-bm-name">{bm.name}</span>
                   <button
                     type="button"
@@ -484,15 +386,168 @@ export function GroupWorkspace() {
                 </div>
               ))
             ) : (
-              <div className="arc-bookmarks-empty-hint">
-                <Star size={12} />
-                <span>点击地址栏右侧 ⭐ 即可添加收藏（所有环境共用）</span>
+              <div className="arc-bookmarks-empty-tip">
+                <span>在地址栏按 ⭐ 可收藏网址</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Loading Progress Bar */}
+        {/* 📌 常驻 / 拖拽收藏区（Pinned Tabs） */}
+        <div
+          className={`arc-pinned-section ${dragTargetId === '__pinned__' ? 'drag-over' : ''}`}
+          onDragOver={(e) => {
+            if (draggingTabId) {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              setDragTargetId('__pinned__')
+            }
+          }}
+          onDragLeave={() => setDragTargetId(null)}
+          onDrop={handleDropToPinned}
+        >
+          <div className="arc-section-title">
+            <Pin size={12} />
+            <span>常驻收藏 · 已放 {pinnedTabs.length} 个</span>
+            <small style={{ fontSize: 10, opacity: 0.7 }}>可拖拽标签至此固定</small>
+          </div>
+          <div className="arc-pinned-items-grid">
+            {pinnedTabs.map((tab) => {
+              const isActive = tab.id === workspace.activeTabId
+              return (
+                <div
+                  key={tab.id}
+                  draggable
+                  className={`arc-tab-item pinned-tab ${isActive ? 'active' : ''}`}
+                  onClick={() => handleSwitchTab(tab.id)}
+                  title={`[常驻] ${tab.profileName} · ${tab.title || tab.url}`}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', tab.id)
+                    e.dataTransfer.effectAllowed = 'move'
+                    setDraggingTabId(tab.id)
+                  }}
+                  onDragEnd={() => {
+                    setDraggingTabId(null)
+                    setDragTargetId(null)
+                  }}
+                >
+                  <span className="arc-tab-dot" style={{ backgroundColor: tab.color }} />
+                  {tab.favicon ? (
+                    <img src={tab.favicon} alt="" className="arc-tab-favicon" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                  ) : (
+                    <Globe size={13} className="arc-tab-default-icon" style={{ color: tab.color }} />
+                  )}
+                  <span className="arc-tab-title">{tab.title || tab.profileName}</span>
+                  <button type="button" className="arc-tab-close-btn" aria-label="关闭标签" onClick={(e) => handleCloseTab(e, tab.id)}>
+                    <X size={11} />
+                  </button>
+                </div>
+              )
+            })}
+            {pinnedTabs.length === 0 && (
+              <div className="arc-pinned-placeholder">拖拽下方环境标签到这里常驻</div>
+            )}
+          </div>
+        </div>
+
+        {/* 📁 分级标签分组区（Hierarchical Tab Groups） */}
+        <div className="arc-tabs-list">
+          {tabGroups.map((grp) => {
+            const isCollapsed = Boolean(collapsedGroups[grp.id])
+            const isDropTarget = dragTargetId === grp.id
+
+            return (
+              <div
+                key={grp.id}
+                className={`arc-profile-section ${isDropTarget ? 'drag-over' : ''}`}
+                onDragOver={(e) => {
+                  if (draggingTabId) {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    setDragTargetId(grp.id)
+                  }
+                }}
+                onDragLeave={() => setDragTargetId(null)}
+                onDrop={(e) => handleDropToGroup(e, grp.id)}
+              >
+                {/* 分组头部：带折叠展开箭头、分组名称、数量统计 */}
+                <div className="arc-section-header" onClick={() => toggleGroupCollapse(grp.id)}>
+                  <button type="button" className="arc-group-toggle-btn" title={isCollapsed ? '展开分组' : '收起分组'}>
+                    {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                  </button>
+                  <Folder size={13} style={{ opacity: 0.8 }} />
+                  <span className="arc-section-name">{grp.name}</span>
+                  <span className="arc-section-count">{grp.tabs.length}</span>
+                </div>
+
+                {/* 分组内部的标签列表 */}
+                {!isCollapsed && (
+                  <div className="arc-section-tabs">
+                    {grp.tabs.map((tab) => {
+                      const isActive = tab.id === workspace.activeTabId
+                      return (
+                        <div
+                          key={tab.id}
+                          draggable
+                          className={`arc-tab-item ${isActive ? 'active' : ''} ${draggingTabId === tab.id ? 'dragging' : ''}`}
+                          onClick={() => handleSwitchTab(tab.id)}
+                          title={`${tab.profileName} · ${tab.title || tab.url}`}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', tab.id)
+                            e.dataTransfer.effectAllowed = 'move'
+                            setDraggingTabId(tab.id)
+                          }}
+                          onDragEnd={() => {
+                            setDraggingTabId(null)
+                            setDragTargetId(null)
+                          }}
+                        >
+                          <span className="arc-tab-dot" style={{ backgroundColor: tab.color }} />
+                          {tab.favicon ? (
+                            <img src={tab.favicon} alt="" className="arc-tab-favicon" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                          ) : (
+                            <Globe size={13} className="arc-tab-default-icon" style={{ color: tab.color }} />
+                          )}
+                          <span className="arc-tab-title">
+                            <strong>#{tab.profileNumber}</strong> {tab.title || tab.profileName}
+                          </span>
+                          <button
+                            type="button"
+                            className="arc-tab-close-btn"
+                            aria-label="关闭标签"
+                            onClick={(e) => handleCloseTab(e, tab.id)}
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* 侧边栏底栏：状态与新建标签 */}
+        <div className="arc-sidebar-bottom">
+          <small className="arc-isolation-note" title="各 Profile 独立持久化 Partition，严格物理隔离不串号">
+            <ShieldCheck size={13} /> 物理隔离 · 绝对零串号
+          </small>
+          <button
+            type="button"
+            className="arc-bottom-new-btn"
+            title="在当前激活账号下新建标签页"
+            onClick={() => handleNewTabForProfile(currentProfile?.id)}
+          >
+            <Plus size={14} />
+            <span>New Tab</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* 右侧主区域：由 WebContentsView 满屏原生渲染（无顶部横条遮挡） */}
+      <main className="arc-main-area">
         {activeTab?.loading && (
           <div className="arc-chrome-progress-bar">
             <div className="arc-chrome-progress-inner" style={{ backgroundColor: theme.highlight }} />

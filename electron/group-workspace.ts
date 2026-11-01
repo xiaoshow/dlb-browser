@@ -57,6 +57,7 @@ export class GroupWorkspaceManager {
 
   constructor(
     private getState: () => any,
+    private saveState: (state: any) => Promise<void> | void,
     private configureProxy: (ownerId: string, ses: Electron.Session, proxy: any) => Promise<string>,
     private getPreloadPath: () => string,
     private getHtmlPath: (groupId: string) => { isUrl: boolean; path: string }
@@ -86,25 +87,35 @@ export class GroupWorkspaceManager {
   }
 
   getClientState(ws: WorkspaceSession) {
+    const state = this.getState()
+    const profiles = state.profiles || []
+    const groups = state.groups || []
     return {
       groupId: ws.groupId,
       groupName: ws.groupName,
       groupColor: ws.groupColor,
       activeTabId: ws.activeTabId,
       bookmarks: this.sharedBookmarks,
-      tabs: ws.tabs.map((t) => ({
-        id: t.id,
-        profileId: t.profileId,
-        profileNumber: t.profileNumber,
-        profileName: t.profileName,
-        color: t.color,
-        url: t.url,
-        title: t.title,
-        favicon: t.favicon,
-        loading: t.loading,
-        canGoBack: t.canGoBack,
-        canGoForward: t.canGoForward,
-      })),
+      tabs: ws.tabs.map((t) => {
+        const p = profiles.find((item: any) => item.id === t.profileId)
+        const grp = groups.find((g: any) => g.id === p?.groupId)
+        return {
+          id: t.id,
+          profileId: t.profileId,
+          profileNumber: t.profileNumber,
+          profileName: t.profileName,
+          color: t.color,
+          url: t.url,
+          title: t.title,
+          favicon: t.favicon,
+          loading: t.loading,
+          canGoBack: t.canGoBack,
+          canGoForward: t.canGoForward,
+          pinned: Boolean(p?.pinned),
+          groupId: p?.groupId || '',
+          groupName: grp?.name || '默认分组',
+        }
+      }),
     }
   }
 
@@ -117,14 +128,12 @@ export class GroupWorkspaceManager {
   private updateBounds(ws: WorkspaceSession) {
     if (ws.win.isDestroyed()) return
     const [width, height] = ws.win.getContentSize()
-    const sidebarWidth = 250
-    // 42px Chrome omnibox toolbar + 30px permanent Chrome bookmarks bar
-    const topBarHeight = 72
-    const margin = 6
-    const contentX = sidebarWidth + margin
-    const contentY = topBarHeight + margin
-    const contentW = Math.max(0, width - sidebarWidth - margin * 2)
-    const contentH = Math.max(0, height - topBarHeight - margin * 2)
+    // 左侧全功能原生侧边栏宽度 260px，右侧满屏原生 View 彻底杜绝遮挡
+    const sidebarWidth = 260
+    const contentX = sidebarWidth
+    const contentY = 0
+    const contentW = Math.max(0, width - sidebarWidth)
+    const contentH = Math.max(0, height)
 
     const active = ws.tabs.find((t) => t.id === ws.activeTabId)
     for (const tab of ws.tabs) {
@@ -140,6 +149,23 @@ export class GroupWorkspaceManager {
         tab.view.setVisible(false)
       }
     }
+  }
+
+  moveTab(groupId: string, sourceTabId: string, targetGroupId?: string, pinned?: boolean) {
+    const ws = this.workspaces.get(groupId)
+    if (!ws) return
+    const tab = ws.tabs.find((t) => t.id === sourceTabId)
+    if (!tab) return
+
+    const state = this.getState()
+    const profiles = state.profiles || []
+    const targetProfile = profiles.find((p: any) => p.id === tab.profileId)
+    if (targetProfile) {
+      if (pinned !== undefined) targetProfile.pinned = pinned
+      if (targetGroupId !== undefined) targetProfile.groupId = targetGroupId
+      this.saveState({ ...state, profiles })
+    }
+    this.broadcastState(ws)
   }
 
   setCommandBar(groupId: string, open: boolean) {
@@ -274,28 +300,12 @@ export class GroupWorkspaceManager {
     const cleanUa = defaultUa.replace(/\s*Electron\/[0-9.]+/gi, '')
     ses.setUserAgent(profile.userAgentMode === 'custom' && profile.userAgent ? profile.userAgent : cleanUa)
 
-    // Remove Electron fingerprints from HTTP request headers (sec-ch-ua, User-Agent)
     try {
       ses.webRequest.onBeforeSendHeaders((details, callback) => {
         const headers = { ...details.requestHeaders }
         for (const k of Object.keys(headers)) {
           if (k.toLowerCase() === 'user-agent') {
             headers[k] = headers[k].replace(/\s*Electron\/[0-9.]+/gi, '')
-          }
-        }
-        const chromeBrands = '"Google Chrome";v="130", "Chromium";v="130", "Not?A_Brand";v="24"'
-        const fullVersion =
-          '"Google Chrome";v="130.0.6723.116", "Chromium";v="130.0.6723.116", "Not?A_Brand";v="24.0.0.0"'
-        for (const k of Object.keys(headers)) {
-          const lower = k.toLowerCase()
-          if (lower === 'sec-ch-ua') {
-            headers[k] = chromeBrands
-          } else if (lower === 'sec-ch-ua-full-version-list') {
-            headers[k] = fullVersion
-          } else if (lower === 'sec-ch-ua-platform') {
-            headers[k] = '"macOS"'
-          } else if (lower === 'sec-ch-ua-mobile') {
-            headers[k] = '?0'
           }
         }
         callback({ requestHeaders: headers })
@@ -309,18 +319,11 @@ export class GroupWorkspaceManager {
       console.warn(`[Workspace] Cookie import warning for ${profile.name}:`, e)
     }
 
-    // Bidirectional sync back to native profile SQLite so changes are preserved
-    try {
-      setupCookieSyncBack(app.getPath('userData'), profile.id, ses)
-    } catch {}
-
-    const stealthPreload = this.getPreloadPath().replace(/preload\.(cjs|js)/, 'stealth-preload.cjs')
     const view = new WebContentsView({
       webPreferences: {
         session: ses,
-        preload: stealthPreload,
-        sandbox: false,
-        contextIsolation: false,
+        sandbox: true,
+        contextIsolation: true,
         nodeIntegration: false,
         backgroundThrottling: true,
       },

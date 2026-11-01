@@ -113,43 +113,11 @@ export async function importNativeCookiesToSession(
 
 /**
  * Synchronize newly created or updated cookies in Electron session back to the native Chromium SQLite database.
+ * 注意：原生 Chromium 在 macOS 上使用系统的独立 Keychain / OSCrypt 解密，外部盲目写入假 AES 会导致原生内核判定数据库损坏并登出 Google。
+ * 此处仅作安全占位，不向原生 SQLite 写入无法被原生内核解密的假密文。
  */
-export function setupCookieSyncBack(userDataDir: string, profileId: string, ses: Session): void {
-  const db = join(userDataDir, 'native-profiles', profileId, 'Default', 'Cookies')
-
-  ses.cookies.on('changed', async (_event, cookie, cause, removed) => {
-    // 关键保护：绝不因前端单次页面刷新或短暂 session 过期把原生持久 SQLite 中的有效登录凭证误删！
-    if (cause === 'overwrite' || removed) return
-    const exists = await access(db).then(() => true).catch(() => false)
-    if (!exists) return
-
-    try {
-      const encrypted = encryptCookie(cookie.value)
-      const hex = encrypted.toString('hex')
-      const nowUtcMicros = (Math.floor(Date.now() / 1000) + 11644473600) * 1000000
-      const expUtcMicros = cookie.expirationDate
-        ? (Math.floor(cookie.expirationDate) + 11644473600) * 1000000
-        : 0
-      const hostKey = cookie.domain || ''
-      const isSecure = cookie.secure ? 1 : 0
-      const isHttpOnly = cookie.httpOnly ? 1 : 0
-      let sameSite = 0
-      if (cookie.sameSite === 'lax') sameSite = 1
-      else if (cookie.sameSite === 'strict') sameSite = 2
-      else if (cookie.sameSite === 'no_restriction') sameSite = -1
-
-      const sql = `INSERT OR REPLACE INTO cookies (
-        creation_utc, host_key, top_frame_site_key, name, value, encrypted_value, path,
-        expires_utc, is_secure, is_httponly, last_access_utc, has_expires, is_persistent,
-        priority, samesite, source_scheme, source_port, last_update_utc, source_type, has_cross_site_ancestor
-      ) VALUES (
-        ${nowUtcMicros}, '${hostKey}', '', '${cookie.name}', '', X'${hex}', '${cookie.path || '/'}',
-        ${expUtcMicros}, ${isSecure}, ${isHttpOnly}, ${nowUtcMicros}, ${cookie.expirationDate ? 1 : 0}, ${cookie.expirationDate ? 1 : 0},
-        1, ${sameSite}, ${isSecure ? 2 : 1}, ${isSecure ? 443 : 80}, ${nowUtcMicros}, 0, 0
-      );`
-      await exec('sqlite3', [db, sql]).catch(() => undefined)
-    } catch {}
-  })
+export function setupCookieSyncBack(_userDataDir: string, _profileId: string, _ses: Session): void {
+  // 安全保护：停止外部篡改原生 SQLite 数据库
 }
 
 export interface BookmarkItem {
