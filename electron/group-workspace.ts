@@ -128,12 +128,13 @@ export class GroupWorkspaceManager {
   private updateBounds(ws: WorkspaceSession) {
     if (ws.win.isDestroyed()) return
     const [width, height] = ws.win.getContentSize()
-    // 左侧全功能原生侧边栏宽度 260px，右侧满屏原生 View 彻底杜绝遮挡
     const sidebarWidth = 260
+    // 官方 Chrome 原版顶部地址栏 (42px) + 官方书签栏 (30px) = 72px，绝不遮挡顶部操作区
+    const topBarHeight = 72
     const contentX = sidebarWidth
-    const contentY = 0
+    const contentY = topBarHeight
     const contentW = Math.max(0, width - sidebarWidth)
-    const contentH = Math.max(0, height)
+    const contentH = Math.max(0, height - topBarHeight)
 
     const active = ws.tabs.find((t) => t.id === ws.activeTabId)
     for (const tab of ws.tabs) {
