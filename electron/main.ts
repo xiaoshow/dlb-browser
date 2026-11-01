@@ -709,9 +709,9 @@ ipcMain.handle('workspace:set-profile-color', (event, profileId: string, color: 
 })
 ipcMain.handle(
   'workspace:add-bookmark',
-  async (event, profileId: string, name: string, url: string, scope?: 'shared' | 'profile') => {
+  async (event, profileId: string, name: string, url: string, scope?: 'shared' | 'profile', favicon?: string) => {
     const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
-    if (ws) await groupWorkspaceManager.addBookmark(ws.groupId, profileId, name, url, scope || 'shared')
+    if (ws) await groupWorkspaceManager.addBookmark(ws.groupId, profileId, name, url, scope || 'shared', favicon)
     return { ok: true }
   }
 )
@@ -731,13 +731,21 @@ ipcMain.handle(
     oldUrl: string,
     newName: string,
     newUrl: string,
-    scope?: 'shared' | 'profile'
+    scope?: 'shared' | 'profile',
+    favicon?: string
   ) => {
     const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
-    if (ws) await groupWorkspaceManager.updateBookmark(ws.groupId, profileId, oldUrl, newName, newUrl, scope || 'shared')
+    if (ws) await groupWorkspaceManager.updateBookmark(ws.groupId, profileId, oldUrl, newName, newUrl, scope || 'shared', favicon)
     return { ok: true }
   }
 )
+ipcMain.handle('workspace:focus-window', (event) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws && !ws.win.isDestroyed()) {
+    ws.win.webContents.focus()
+  }
+  return { ok: true }
+})
 ipcMain.handle(
   'workspace:move-bookmark-scope',
   async (event, profileId: string, bookmark: any, targetScope: 'shared' | 'profile') => {

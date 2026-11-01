@@ -118,25 +118,13 @@ function BookmarkFavicon({
 }) {
   const [loadError, setLoadError] = useState(false)
 
-  // 100% 纯本地提取，绝不向 Google 或任何第三方发起背景请求
+  // 严格使用书签自带真实 Favicon 或当前打开标签页的精确匹配 Favicon，绝不跨路径模糊借用
   let faviconUrl = explicitFavicon
-  if (!faviconUrl && url) {
-    try {
-      const parsed = new URL(url)
-      const hostname = parsed.hostname
-      if (tabs) {
-        const match = tabs.find((t) => {
-          try {
-            return new URL(t.url).hostname === hostname && !!t.favicon
-          } catch {
-            return false
-          }
-        })
-        if (match?.favicon) {
-          faviconUrl = match.favicon
-        }
-      }
-    } catch {}
+  if (!faviconUrl && url && tabs) {
+    const match = tabs.find((t) => t.url === url && !!t.favicon)
+    if (match?.favicon) {
+      faviconUrl = match.favicon
+    }
   }
 
   if (faviconUrl && !loadError) {
@@ -187,7 +175,7 @@ function BookmarkFavicon({
   )
 }
 
-export function GroupWorkspace() {
+export function GroupWorkspaceInner() {
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
   const [urlInput, setUrlInput] = useState('')
   const [isEditingUrl, setIsEditingUrl] = useState(false)
@@ -216,6 +204,7 @@ export function GroupWorkspace() {
   activeTabRef.current = activeTab
 
   function focusAndSelectOmnibox(clear = false) {
+    void window.profileBrowser?.workspaceFocusWindow?.()
     setIsEditingUrl(true)
     if (clear) {
       setUrlInput('')
@@ -223,15 +212,23 @@ export function GroupWorkspace() {
       const cur = activeTabRef.current
       if (cur?.url && cur.url !== 'about:blank') {
         setUrlInput(cur.url)
+      } else {
+        setUrlInput('')
       }
     }
+    // 立即执行 focus 和 select，确保第一时间内按键不丢失
+    omniboxInputRef.current?.focus()
+    if (!clear) {
+      omniboxInputRef.current?.select()
+    }
+    // 在下一次动画帧与微延时中再次强化确保获焦
+    requestAnimationFrame(() => {
+      omniboxInputRef.current?.focus()
+      if (!clear) omniboxInputRef.current?.select()
+    })
     setTimeout(() => {
-      if (omniboxInputRef.current) {
-        omniboxInputRef.current.focus()
-        if (!clear) {
-          omniboxInputRef.current.select()
-        }
-      }
+      omniboxInputRef.current?.focus()
+      if (!clear) omniboxInputRef.current?.select()
     }, 20)
   }
 
@@ -241,7 +238,9 @@ export function GroupWorkspace() {
       if (state) {
         setWorkspace(state)
         const active = state.tabs.find((t) => t.id === state.activeTabId)
-        if (active) setUrlInput(active.url)
+        if (active) {
+          setUrlInput(active.url === 'about:blank' ? '' : active.url)
+        }
       }
     })
 
@@ -284,8 +283,21 @@ export function GroupWorkspace() {
         e.preventDefault()
         const cur = activeTabRef.current
         if (cur) {
+          focusAndSelectOmnibox(true)
           void window.profileBrowser?.workspaceNewTab(cur.profileId, 'about:blank')
         }
+      } else if (cmdOrCtrl && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault()
+        handleToggleBookmark()
+      } else if (e.key === 'Escape') {
+        if (isEditingUrl) {
+          setIsEditingUrl(false)
+          const cur = activeTabRef.current
+          setUrlInput(cur?.url && cur.url !== 'about:blank' ? cur.url : '')
+          omniboxInputRef.current?.blur()
+        }
+        setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
+        setEditModal({ open: false, isNew: false, isRenameOnly: false, oldUrl: '', name: '', url: '', scope: 'shared' })
       }
     }
     window.addEventListener('keydown', handleGlobalKeyDown)
@@ -300,7 +312,7 @@ export function GroupWorkspace() {
 
   useEffect(() => {
     if (activeTab && !isEditingUrl) {
-      setUrlInput(activeTab.url)
+      setUrlInput(activeTab.url === 'about:blank' ? '' : activeTab.url)
     }
   }, [activeTab?.id, activeTab?.url, isEditingUrl])
 
@@ -333,7 +345,7 @@ export function GroupWorkspace() {
   function handleNewTabForProfile(profileId?: string) {
     const targetPid = profileId || currentProfile?.id
     if (!targetPid) return
-    setIsEditingUrl(false)
+    focusAndSelectOmnibox(true)
     void window.profileBrowser?.workspaceNewTab(targetPid, 'about:blank')
   }
 
@@ -355,6 +367,7 @@ export function GroupWorkspace() {
     const target = urlInput.trim()
     if (!target) return
     setIsEditingUrl(false)
+    omniboxInputRef.current?.blur()
     void window.profileBrowser?.workspaceNavigate(activeTab.id, target)
   }
 
@@ -387,7 +400,8 @@ export function GroupWorkspace() {
         activeTab.profileId,
         activeTab.title || activeTab.url,
         activeTab.url,
-        'profile'
+        'profile',
+        activeTab.favicon
       )
     }
   }
@@ -476,7 +490,7 @@ export function GroupWorkspace() {
 
     if (editModal.isNew) {
       if (activeTab) {
-        void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, cleanName, cleanUrl, targetScope)
+        void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, cleanName, cleanUrl, targetScope, activeTab.favicon)
       }
     } else {
       if (activeTab) {
@@ -529,7 +543,7 @@ export function GroupWorkspace() {
       if (jsonStr) {
         const data = JSON.parse(jsonStr)
         if (data.type === 'bookmark' && data.url) {
-          void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, data.name || data.url, data.url, scope)
+          void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, data.name || data.url, data.url, scope, data.favicon || activeTab.favicon)
           return
         }
       }
@@ -537,7 +551,7 @@ export function GroupWorkspace() {
 
     const uri = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
     if (uri && (uri.startsWith('http://') || uri.startsWith('https://'))) {
-      void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, activeTab.title || uri, uri, scope)
+      void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, activeTab.title || uri, uri, scope, activeTab.favicon)
     }
   }
 
@@ -567,37 +581,7 @@ export function GroupWorkspace() {
     setDraggedBookmarkIndex(null)
   }
 
-  // 快捷键支持 (Cmd+L 聚焦地址栏 / Cmd+D 加收藏)
-  useEffect(() => {
-    const unsub = window.profileBrowser?.onFocusOmnibox?.(() => {
-      omniboxInputRef.current?.focus()
-      omniboxInputRef.current?.select()
-    })
 
-    function handleKeyDown(e: KeyboardEvent) {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey
-      if (isCmdOrCtrl && e.key.toLowerCase() === 'l') {
-        e.preventDefault()
-        omniboxInputRef.current?.focus()
-        omniboxInputRef.current?.select()
-      } else if (isCmdOrCtrl && e.key.toLowerCase() === 'd') {
-        e.preventDefault()
-        handleToggleBookmark()
-      } else if (e.key === 'Escape') {
-        if (contextMenu.visible) {
-          setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
-        }
-        if (editModal.open) {
-          setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })
-        }
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      unsub?.()
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [activeTab, isBookmarked, contextMenu.visible, editModal.open])
 
   // 全局点击自动关闭书签右键菜单
   useEffect(() => {
@@ -813,7 +797,10 @@ export function GroupWorkspace() {
                 type="text"
                 className="arc-chrome-input official-chrome-input"
                 value={urlInput}
-                onFocus={() => setIsEditingUrl(true)}
+                onFocus={() => {
+                  setIsEditingUrl(true)
+                  void window.profileBrowser?.workspaceFocusWindow?.()
+                }}
                 onBlur={() => setIsEditingUrl(false)}
                 onChange={(e) => setUrlInput(e.target.value)}
                 placeholder="输入网址或 Google 搜索 (⌘L)…"
@@ -1052,5 +1039,56 @@ export function GroupWorkspace() {
         </div>
       )}
     </div>
+  )
+}
+
+class WorkspaceErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[WorkspaceErrorBoundary] Caught workspace render error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 24, fontFamily: 'system-ui', color: '#333' }}>
+          <h3>工作区遇到渲染异常，正在自动恢复…</h3>
+          <p style={{ color: '#666', fontSize: 13 }}>{this.state.error?.message}</p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              background: '#1a73e8',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            重新加载界面
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+export function GroupWorkspace() {
+  return (
+    <WorkspaceErrorBoundary>
+      <GroupWorkspaceInner />
+    </WorkspaceErrorBoundary>
   )
 }

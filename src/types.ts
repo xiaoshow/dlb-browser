@@ -170,13 +170,14 @@ export interface BrowserAPI {
   workspaceReload: (tabId: string) => Promise<void>
   workspaceSetCommandBar: (visible: boolean) => Promise<void>
   workspaceSetProfileColor: (profileId: string, color: string) => Promise<void>
-  workspaceAddBookmark: (profileId: string, name: string, url: string, scope?: 'shared' | 'profile') => Promise<void>
+  workspaceAddBookmark: (profileId: string, name: string, url: string, scope?: 'shared' | 'profile', favicon?: string) => Promise<void>
   workspaceRemoveBookmark: (profileId: string, url: string, scope?: 'shared' | 'profile') => Promise<void>
-  workspaceUpdateBookmark?: (profileId: string, oldUrl: string, newName: string, newUrl: string, scope?: 'shared' | 'profile') => Promise<{ ok: boolean }>
+  workspaceUpdateBookmark?: (profileId: string, oldUrl: string, newName: string, newUrl: string, scope?: 'shared' | 'profile', favicon?: string) => Promise<{ ok: boolean }>
   workspaceMoveBookmarkScope?: (profileId: string, bookmark: BookmarkItem, targetScope: 'shared' | 'profile') => Promise<{ ok: boolean }>
   workspaceReorderBookmarks?: (profileId: string, bookmarks: BookmarkItem[], scope?: 'shared' | 'profile') => Promise<{ ok: boolean }>
   workspaceShowBookmarkMenu?: (profileId: string, bookmark: BookmarkItem | null, scope: 'shared' | 'profile', x?: number, y?: number) => Promise<{ ok: boolean }>
   workspaceSetModalActive?: (active: boolean) => Promise<{ ok: boolean }>
+  workspaceFocusWindow?: () => Promise<{ ok: boolean }>
   onTriggerBookmarkAction?: (callback: (payload: { action: string; url?: string; bookmark?: any; scope?: 'shared' | 'profile' }) => void) => () => void
   workspaceMoveTab?: (sourceTabId: string, targetGroupId?: string, pinned?: boolean) => Promise<{ ok: boolean }>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void

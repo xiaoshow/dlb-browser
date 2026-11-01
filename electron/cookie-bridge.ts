@@ -139,6 +139,7 @@ export async function readProfileBookmarks(userDataDir: string, profileId: strin
         id: c.id || c.guid,
         name: c.name || c.url,
         url: c.url,
+        favicon: c.favicon || undefined,
       }))
   } catch {
     return []
@@ -149,7 +150,8 @@ export async function addProfileBookmark(
   userDataDir: string,
   profileId: string,
   name: string,
-  url: string
+  url: string,
+  favicon?: string
 ): Promise<void> {
   const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
   try {
@@ -164,8 +166,8 @@ export async function addProfileBookmark(
     if (!Array.isArray(data.roots.bookmark_bar.children)) {
       data.roots.bookmark_bar.children = []
     }
-    const exists = data.roots.bookmark_bar.children.some((c: any) => c?.url === url)
-    if (!exists) {
+    const target = data.roots.bookmark_bar.children.find((c: any) => c?.url === url)
+    if (!target) {
       data.roots.bookmark_bar.children.push({
         date_added: String((Date.now() + 11644473600000) * 1000),
         guid: randomUUID(),
@@ -173,7 +175,11 @@ export async function addProfileBookmark(
         name: name || url,
         type: 'url',
         url,
+        favicon: favicon || undefined,
       })
+      await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
+    } else if (favicon && !target.favicon) {
+      target.favicon = favicon
       await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
     }
   } catch (err) {
@@ -296,7 +302,8 @@ export async function addSharedBookmark(
   userDataDir: string,
   name: string,
   url: string,
-  mirrorToProfileIds: string[] = []
+  mirrorToProfileIds: string[] = [],
+  favicon?: string
 ): Promise<BookmarkItem[]> {
   const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
   let list: BookmarkItem[] = []
@@ -306,18 +313,23 @@ export async function addSharedBookmark(
     if (Array.isArray(parsed)) list = parsed
   } catch {}
 
-  if (!list.some(b => b.url === url)) {
+  const existing = list.find(b => b.url === url)
+  if (!existing) {
     list.push({
       id: randomUUID(),
       name: name || url,
       url,
+      favicon: favicon || undefined,
     })
+    await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
+  } else if (favicon && !existing.favicon) {
+    existing.favicon = favicon
     await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
   }
 
   // 镜像同步写入各选中的 Profile 自身，确保单独启动时也有此书签
   for (const pid of mirrorToProfileIds) {
-    await addProfileBookmark(userDataDir, pid, name, url).catch(() => undefined)
+    await addProfileBookmark(userDataDir, pid, name, url, favicon).catch(() => undefined)
   }
 
   return list
@@ -350,7 +362,8 @@ export async function updateSharedBookmark(
   userDataDir: string,
   oldUrl: string,
   newName: string,
-  newUrl: string
+  newUrl: string,
+  favicon?: string
 ): Promise<BookmarkItem[]> {
   const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
   let list: BookmarkItem[] = []
@@ -364,9 +377,57 @@ export async function updateSharedBookmark(
   if (target) {
     target.name = newName.trim() || target.name
     target.url = newUrl.trim() || target.url
+    if (favicon) target.favicon = favicon
     await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
   }
   return list
+}
+
+export async function syncStoredBookmarkFavicon(
+  userDataDir: string,
+  profileId: string | undefined,
+  url: string,
+  favicon: string
+): Promise<void> {
+  if (!url || !favicon) return
+  // 1. 同步 shared bookmarks
+  try {
+    const sharedPath = join(userDataDir, 'workspace-shared-bookmarks.json')
+    const raw = await readFile(sharedPath, 'utf8')
+    const list: BookmarkItem[] = JSON.parse(raw)
+    let changed = false
+    for (const b of list) {
+      if (b.url === url && b.favicon !== favicon) {
+        b.favicon = favicon
+        changed = true
+      }
+    }
+    if (changed) {
+      await writeFile(sharedPath, JSON.stringify(list, null, 2), { mode: 0o600 })
+    }
+  } catch {}
+
+  // 2. 同步 profile bookmarks
+  if (profileId) {
+    try {
+      const profPath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
+      const raw = await readFile(profPath, 'utf8')
+      const data = JSON.parse(raw)
+      const children = data?.roots?.bookmark_bar?.children
+      if (Array.isArray(children)) {
+        let changed = false
+        for (const c of children) {
+          if (c && c.url === url && c.favicon !== favicon) {
+            c.favicon = favicon
+            changed = true
+          }
+        }
+        if (changed) {
+          await writeFile(profPath, JSON.stringify(data, null, 2), { mode: 0o600 })
+        }
+      }
+    } catch {}
+  }
 }
 
 export async function reorderSharedBookmarks(

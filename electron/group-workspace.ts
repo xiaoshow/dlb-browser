@@ -1,6 +1,7 @@
 import { app, BrowserWindow, session, WebContentsView, nativeImage, Menu, clipboard } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { access, writeFile } from 'node:fs/promises'
 import {
   importNativeCookiesToSession,
   setupCookieSyncBack,
@@ -14,6 +15,7 @@ import {
   removeSharedBookmark,
   updateSharedBookmark,
   reorderSharedBookmarks,
+  syncStoredBookmarkFavicon,
   type BookmarkItem,
 } from './cookie-bridge.js'
 
@@ -412,11 +414,14 @@ export class GroupWorkspaceManager {
       })
     } catch {}
 
-    // 仅在首次初始化该 Profile 分区时导入一次现有 Cookies，绝不在每次建 Tab 时反复重放覆盖，避免触发 Google SIDTS 旋转封禁
-    if (!this.importedProfileCookies.has(profile.id)) {
+    // 仅在首次初始化全新 Profile 分区时导入一次现有 Cookies，绝不在已有会话中反复重放覆盖，避免触发 Google 旋转封禁
+    const markerFile = join(app.getPath('userData'), 'Partitions', `profile-${profile.id}`, '.cookies_migrated')
+    const markerExists = await access(markerFile).then(() => true).catch(() => false)
+    if (!markerExists && !this.importedProfileCookies.has(profile.id)) {
+      this.importedProfileCookies.add(profile.id)
       try {
-        await importNativeCookiesToSession(app.getPath('userData'), profile.id, ses)
-        this.importedProfileCookies.add(profile.id)
+        const count = await importNativeCookiesToSession(app.getPath('userData'), profile.id, ses)
+        await writeFile(markerFile, JSON.stringify({ migratedAt: new Date().toISOString(), count }), { mode: 0o600 }).catch(() => undefined)
       } catch (e) {
         console.warn(`[Workspace] Cookie import warning for ${profile.name}:`, e)
       }
@@ -576,6 +581,7 @@ export class GroupWorkspaceManager {
     view.webContents.on('page-favicon-updated', (_event, favicons) => {
       if (favicons?.[0]) {
         tabEntry.favicon = favicons[0]
+        void this.syncBookmarkFavicon(tabEntry.url, favicons[0])
         this.broadcastState(ws)
       }
     })
@@ -685,21 +691,44 @@ export class GroupWorkspaceManager {
     return bms
   }
 
+  async syncBookmarkFavicon(url: string, favicon: string) {
+    if (!url || !favicon) return
+    let changed = false
+    for (const b of this.sharedBookmarks) {
+      if (b.url === url && b.favicon !== favicon) {
+        b.favicon = favicon
+        changed = true
+      }
+    }
+    for (const [, list] of this.profileBookmarks.entries()) {
+      for (const b of list) {
+        if (b.url === url && b.favicon !== favicon) {
+          b.favicon = favicon
+          changed = true
+        }
+      }
+    }
+    if (changed) {
+      await syncStoredBookmarkFavicon(app.getPath('userData'), undefined, url, favicon)
+    }
+  }
+
   async addBookmark(
     groupId: string,
     profileId: string,
     name: string,
     url: string,
-    scope: 'shared' | 'profile' = 'shared'
+    scope: 'shared' | 'profile' = 'shared',
+    favicon?: string
   ) {
     const ws = this.workspaces.get(groupId)
     if (scope === 'profile' && profileId) {
-      await addProfileBookmark(app.getPath('userData'), profileId, name, url)
+      await addProfileBookmark(app.getPath('userData'), profileId, name, url, favicon)
       const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
       this.profileBookmarks.set(profileId, updated)
     } else {
       const pids = ws ? Array.from(new Set(ws.tabs.map((t) => t.profileId))) : [profileId]
-      this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), name, url, pids)
+      this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), name, url, pids, favicon)
     }
     if (ws) this.broadcastState(ws)
   }
@@ -728,7 +757,8 @@ export class GroupWorkspaceManager {
     oldUrl: string,
     newName: string,
     newUrl: string,
-    scope: 'shared' | 'profile' = 'shared'
+    scope: 'shared' | 'profile' = 'shared',
+    favicon?: string
   ) {
     const ws = this.workspaces.get(groupId)
     if (scope === 'profile' && profileId) {
@@ -736,7 +766,7 @@ export class GroupWorkspaceManager {
       const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
       this.profileBookmarks.set(profileId, updated)
     } else {
-      this.sharedBookmarks = await updateSharedBookmark(app.getPath('userData'), oldUrl, newName, newUrl)
+      this.sharedBookmarks = await updateSharedBookmark(app.getPath('userData'), oldUrl, newName, newUrl, favicon)
     }
     if (ws) this.broadcastState(ws)
   }
@@ -938,7 +968,16 @@ export class GroupWorkspaceManager {
       } catch {}
     }
     this.updateBounds(ws)
-    target.view.webContents.focus()
+    if (target.url === 'about:blank') {
+      ws.win.webContents.focus()
+      setTimeout(() => {
+        if (!ws.win.isDestroyed()) {
+          ws.win.webContents.send('workspace:focus-omnibox', { clear: true })
+        }
+      }, 10)
+    } else {
+      target.view.webContents.focus()
+    }
     void this.ensureBookmarks(target.profileId).then(() => {
       this.broadcastState(ws)
     })
@@ -990,6 +1029,7 @@ export class GroupWorkspaceManager {
     tab.url = targetUrl
     tab.loading = true
     this.broadcastState(ws)
+    targetUrl !== 'about:blank' && tab.view.webContents.focus()
     void tab.view.webContents.loadURL(targetUrl).catch((err) => {
       console.warn(`[Workspace] Navigate error for tab ${tabId}:`, err)
     })
