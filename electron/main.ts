@@ -717,6 +717,16 @@ ipcMain.handle('workspace:remove-bookmark', async (event, profileId: string, url
   if (ws) await groupWorkspaceManager.removeBookmark(ws.groupId, profileId, url)
   return { ok: true }
 })
+ipcMain.handle('workspace:update-bookmark', async (event, oldUrl: string, newName: string, newUrl: string) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) await groupWorkspaceManager.updateBookmark(ws.groupId, oldUrl, newName, newUrl)
+  return { ok: true }
+})
+ipcMain.handle('workspace:reorder-bookmarks', async (event, bookmarks: any[]) => {
+  const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
+  if (ws) await groupWorkspaceManager.reorderBookmarks(ws.groupId, bookmarks)
+  return { ok: true }
+})
 ipcMain.handle('workspace:move-tab', (event, sourceTabId: string, targetGroupId?: string, pinned?: boolean) => {
   const ws = groupWorkspaceManager.getWorkspaceBySender(event.sender)
   if (ws) groupWorkspaceManager.moveTab(ws.groupId, sourceTabId, targetGroupId, pinned)

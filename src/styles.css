@@ -1274,9 +1274,28 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   border-color: #1a73e8 !important;
   box-shadow: 0 1px 4px rgba(26, 115, 232, 0.25) !important;
 }
+.arc-chrome-lock-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  padding: 3px 4px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+  user-select: none;
+  -webkit-user-drag: element;
+}
+.arc-chrome-lock-handle:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+.arc-chrome-lock-handle:active {
+  cursor: grabbing;
+  background: rgba(0, 0, 0, 0.12);
+}
 .arc-lock-icon {
   color: #5f6368;
   flex-shrink: 0;
+  pointer-events: none;
 }
 .arc-chrome-input {
   flex: 1;
@@ -1327,19 +1346,22 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   max-height: 30px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  gap: 6px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 0 10px;
+  gap: 4px;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e8eaed;
   -webkit-app-region: no-drag;
   overflow-x: auto;
   overflow-y: hidden;
   user-select: none;
   -webkit-user-select: none;
   z-index: 10;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
-.official-chrome-bookmarks-bar {
-  background: #ffffff !important;
+.arc-chrome-bookmarks-bar.drag-over {
+  background: #e8f0fe !important;
+  box-shadow: inset 0 0 0 2px #1a73e8;
 }
 .arc-chrome-bookmarks-bar::-webkit-scrollbar {
   display: none;
@@ -1347,7 +1369,7 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
 .arc-bookmarks-items-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex-shrink: 0;
 }
 .arc-shared-badge {
@@ -1355,18 +1377,14 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-weight: 700;
-  color: #64748b;
-  background: #f1f5f9;
+  font-weight: 600;
+  color: #5f6368 !important;
+  background: #f1f3f4;
   padding: 2px 7px;
   border-radius: 4px;
-  margin-right: 4px;
+  margin-right: 3px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
-.arc-bookmark-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
 .arc-bookmark-pill {
   display: inline-flex;
   align-items: center;
@@ -1375,29 +1393,39 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   padding: 0 8px;
   border-radius: 4px;
   font-size: 12px;
-  font-weight: 500;
-  color: #334155;
+  font-weight: 400;
+  color: #202124 !important;
   background: transparent;
   cursor: pointer;
   border: none;
   transition: background 0.15s ease, color 0.15s ease;
   user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  -webkit-user-drag: element;
 }
 .arc-bookmark-pill:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #0f172a;
+  background: #f1f3f4;
+  color: #202124 !important;
+}
+.arc-bookmark-pill.is-dragging {
+  opacity: 0.45;
+  background: #e8f0fe;
 }
 .official-bookmark-pill {
   cursor: pointer !important;
 }
 .arc-bm-icon {
-  color: #64748b;
+  color: #5f6368;
   flex-shrink: 0;
 }
 .arc-bm-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 180px;
+  color: #202124 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-size: 12px;
 }
 .arc-bm-del {
   border: none;
@@ -1408,27 +1436,194 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
   align-items: center;
   justify-content: center;
   opacity: 0;
-  margin-left: 3px;
-  color: #94a3b8;
-  font-size: 13px;
-  font-weight: 600;
+  margin-left: 2px;
+  color: #80868b;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1;
   transition: opacity 0.15s ease;
 }
 .arc-bookmark-pill:hover .arc-bm-del {
-  opacity: 0.65;
+  opacity: 0.6;
 }
 .arc-bm-del:hover {
   opacity: 1 !important;
-  color: #ef4444;
+  color: #d93025;
 }
 .arc-bookmarks-empty-hint {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
-  color: var(--arc-text);
-  opacity: 0.75;
+  font-size: 12px;
+  color: #5f6368 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* Chrome-Style Context Menu */
+.arc-chrome-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid #dadce0;
+  padding: 5px 0;
+  min-width: 160px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  animation: contextMenuPop 0.1s ease-out;
+}
+@keyframes contextMenuPop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.arc-context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: #202124;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.arc-context-item:hover {
+  background: #f1f3f4;
+}
+.arc-context-item.text-danger {
+  color: #d93025;
+}
+.arc-context-item.text-danger:hover {
+  background: #fce8e6;
+}
+.arc-context-divider {
+  height: 1px;
+  background: #e8eaed;
+  margin: 4px 0;
+}
+
+/* Edit Bookmark Modal */
+.arc-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+.arc-modal-card {
+  width: 380px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+  border: 1px solid #dadce0;
+  overflow: hidden;
+  animation: modalScale 0.15s ease-out;
+}
+@keyframes modalScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.arc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f3f4;
+}
+.arc-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #202124;
+}
+.arc-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: #5f6368;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.arc-modal-close:hover {
+  background: #f1f3f4;
+  color: #202124;
+}
+.arc-modal-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.arc-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.arc-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #5f6368;
+}
+.arc-field-input {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #dadce0;
+  font-size: 13px;
+  color: #202124;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.arc-field-input:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+.arc-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-top: 1px solid #f1f3f4;
+}
+.arc-modal-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-secondary {
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  color: #3c4043;
+}
+.btn-secondary:hover {
+  background: #f1f3f4;
+}
+.btn-primary {
+  background: #1a73e8;
+  border: 1px solid #1a73e8;
+  color: #ffffff;
+}
+.btn-primary:hover {
+  background: #1557b0;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .arc-chrome-progress-bar {

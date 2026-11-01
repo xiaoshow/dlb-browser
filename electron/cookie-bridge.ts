@@ -292,3 +292,38 @@ export async function removeSharedBookmark(
 
   return list
 }
+
+export async function updateSharedBookmark(
+  userDataDir: string,
+  oldUrl: string,
+  newName: string,
+  newUrl: string
+): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
+  let list: BookmarkItem[] = []
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) list = parsed
+  } catch {}
+
+  const target = list.find(b => b.url === oldUrl)
+  if (target) {
+    target.name = newName.trim() || target.name
+    target.url = newUrl.trim() || target.url
+    await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
+  }
+  return list
+}
+
+export async function reorderSharedBookmarks(
+  userDataDir: string,
+  newList: BookmarkItem[]
+): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
+  try {
+    await writeFile(filePath, JSON.stringify(newList, null, 2), { mode: 0o600 })
+  } catch {}
+  return newList
+}
+

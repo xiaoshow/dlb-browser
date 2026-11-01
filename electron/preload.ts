@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('profileBrowser', {
   workspaceSetProfileColor: (profileId: string, color: string) => ipcRenderer.invoke('workspace:set-profile-color', profileId, color),
   workspaceAddBookmark: (profileId: string, name: string, url: string) => ipcRenderer.invoke('workspace:add-bookmark', profileId, name, url),
   workspaceRemoveBookmark: (profileId: string, url: string) => ipcRenderer.invoke('workspace:remove-bookmark', profileId, url),
+  workspaceUpdateBookmark: (oldUrl: string, newName: string, newUrl: string) => ipcRenderer.invoke('workspace:update-bookmark', oldUrl, newName, newUrl),
+  workspaceReorderBookmarks: (bookmarks: any[]) => ipcRenderer.invoke('workspace:reorder-bookmarks', bookmarks),
   workspaceMoveTab: (sourceTabId: string, targetGroupId?: string, pinned?: boolean) => ipcRenderer.invoke('workspace:move-tab', sourceTabId, targetGroupId, pinned),
   onWorkspaceState: (callback: (state: any) => void) => { const listener = (_event: Electron.IpcRendererEvent, state: any) => callback(state); ipcRenderer.on('workspace:state', listener); return () => ipcRenderer.removeListener('workspace:state', listener) },
   onFocusOmnibox: (callback: () => void) => { const listener = () => callback(); ipcRenderer.on('workspace:focus-omnibox', listener); return () => ipcRenderer.removeListener('workspace:focus-omnibox', listener) },

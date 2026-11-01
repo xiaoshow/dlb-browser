@@ -169,6 +169,8 @@ export interface BrowserAPI {
   workspaceSetProfileColor: (profileId: string, color: string) => Promise<void>
   workspaceAddBookmark: (profileId: string, name: string, url: string) => Promise<void>
   workspaceRemoveBookmark: (profileId: string, url: string) => Promise<void>
+  workspaceUpdateBookmark?: (oldUrl: string, newName: string, newUrl: string) => Promise<{ ok: boolean }>
+  workspaceReorderBookmarks?: (bookmarks: BookmarkItem[]) => Promise<{ ok: boolean }>
   workspaceMoveTab?: (sourceTabId: string, targetGroupId?: string, pinned?: boolean) => Promise<{ ok: boolean }>
   onWorkspaceState: (callback: (state: WorkspaceState) => void) => () => void
   onFocusOmnibox?: (callback: () => void) => () => void

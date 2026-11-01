@@ -10,6 +10,8 @@ import {
   readSharedBookmarks,
   addSharedBookmark,
   removeSharedBookmark,
+  updateSharedBookmark,
+  reorderSharedBookmarks,
   type BookmarkItem,
 } from './cookie-bridge.js'
 
@@ -570,6 +572,18 @@ export class GroupWorkspaceManager {
     const ws = this.workspaces.get(groupId)
     const pids = ws ? Array.from(new Set(ws.tabs.map(t => t.profileId))) : [profileId]
     this.sharedBookmarks = await removeSharedBookmark(app.getPath('userData'), url, pids)
+    if (ws) this.broadcastState(ws)
+  }
+
+  async updateBookmark(groupId: string, oldUrl: string, newName: string, newUrl: string) {
+    const ws = this.workspaces.get(groupId)
+    this.sharedBookmarks = await updateSharedBookmark(app.getPath('userData'), oldUrl, newName, newUrl)
+    if (ws) this.broadcastState(ws)
+  }
+
+  async reorderBookmarks(groupId: string, bookmarks: BookmarkItem[]) {
+    const ws = this.workspaces.get(groupId)
+    this.sharedBookmarks = await reorderSharedBookmarks(app.getPath('userData'), bookmarks)
     if (ws) this.broadcastState(ws)
   }
 

@@ -11,7 +11,26 @@ import {
   Palette,
   Star,
   ShieldCheck,
+  Copy,
+  Edit2,
+  Trash2,
+  ExternalLink,
 } from 'lucide-react'
+
+interface BookmarkContextMenuState {
+  visible: boolean
+  x: number
+  y: number
+  bookmark: { name: string; url: string } | null
+}
+
+interface EditBookmarkModalState {
+  open: boolean
+  isNew: boolean
+  oldUrl: string
+  name: string
+  url: string
+}
 
 export interface ArcPalette {
   id: string
@@ -67,6 +86,16 @@ export function GroupWorkspace() {
   const [urlInput, setUrlInput] = useState('')
   const [isEditingUrl, setIsEditingUrl] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [isDragOverBar, setIsDragOverBar] = useState(false)
+  const [draggedBookmarkIndex, setDraggedBookmarkIndex] = useState<number | null>(null)
+  const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState>({ visible: false, x: 0, y: 0, bookmark: null })
+  const [editModal, setEditModal] = useState<EditBookmarkModalState>({
+    open: false,
+    isNew: false,
+    oldUrl: '',
+    name: '',
+    url: '',
+  })
   const omniboxInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -192,6 +221,120 @@ export function GroupWorkspace() {
     void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, url)
   }
 
+  function handleNewTabWithUrl(url: string) {
+    if (!activeTab) return
+    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+    void window.profileBrowser?.workspaceNewTab(activeTab.profileId, url)
+  }
+
+  function handleOpenEditModal(bm?: { name: string; url: string } | null) {
+    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+    if (bm) {
+      setEditModal({
+        open: true,
+        isNew: false,
+        oldUrl: bm.url,
+        name: bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name,
+        url: bm.url,
+      })
+    } else {
+      setEditModal({
+        open: true,
+        isNew: true,
+        oldUrl: '',
+        name: activeTab?.title || '',
+        url: activeTab?.url && !activeTab.url.startsWith('chrome://') ? activeTab.url : 'https://',
+      })
+    }
+  }
+
+  function handleSaveEditModal() {
+    if (!editModal.url.trim()) return
+    const cleanUrl = editModal.url.trim()
+    const cleanName = editModal.name.trim() || cleanUrl
+    if (editModal.isNew) {
+      if (activeTab) {
+        void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, cleanName, cleanUrl)
+      }
+    } else {
+      void window.profileBrowser?.workspaceUpdateBookmark?.(editModal.oldUrl, cleanName, cleanUrl)
+    }
+    setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })
+  }
+
+  function handleCopyUrl(url: string) {
+    void navigator.clipboard.writeText(url)
+    setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+  }
+
+  function handleLockDragStart(e: React.DragEvent) {
+    if (!activeTab?.url || activeTab.url.startsWith('chrome://')) return
+    const cleanName = activeTab.title || activeTab.url
+    const dragData = {
+      type: 'bookmark',
+      name: cleanName,
+      url: activeTab.url,
+    }
+    e.dataTransfer.setData('text/plain', activeTab.url)
+    e.dataTransfer.setData('text/uri-list', activeTab.url)
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData))
+    e.dataTransfer.effectAllowed = 'copy'
+  }
+
+  function handleBarDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    if (!isDragOverBar) setIsDragOverBar(true)
+  }
+
+  function handleBarDragLeave() {
+    setIsDragOverBar(false)
+  }
+
+  function handleBarDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragOverBar(false)
+    if (!activeTab) return
+
+    try {
+      const jsonStr = e.dataTransfer.getData('application/json')
+      if (jsonStr) {
+        const data = JSON.parse(jsonStr)
+        if (data.type === 'bookmark' && data.url) {
+          void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, data.name || data.url, data.url)
+          return
+        }
+      }
+    } catch {}
+
+    const uri = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
+    if (uri && (uri.startsWith('http://') || uri.startsWith('https://'))) {
+      void window.profileBrowser?.workspaceAddBookmark(activeTab.profileId, activeTab.title || uri, uri)
+    }
+  }
+
+  function handleBookmarkDragStart(e: React.DragEvent, idx: number) {
+    setDraggedBookmarkIndex(idx)
+    e.dataTransfer.setData('application/x-bm-idx', String(idx))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleBookmarkDropOnIndex(e: React.DragEvent, targetIdx: number) {
+    e.preventDefault()
+    e.stopPropagation()
+    const srcStr = e.dataTransfer.getData('application/x-bm-idx')
+    if (srcStr !== '' && workspace?.bookmarks) {
+      const srcIdx = Number(srcStr)
+      if (srcIdx !== targetIdx && !Number.isNaN(srcIdx)) {
+        const updated = [...workspace.bookmarks]
+        const [item] = updated.splice(srcIdx, 1)
+        updated.splice(targetIdx, 0, item)
+        void window.profileBrowser?.workspaceReorderBookmarks?.(updated)
+      }
+    }
+    setDraggedBookmarkIndex(null)
+  }
+
   // 快捷键支持 (Cmd+L 聚焦地址栏 / Cmd+D 加收藏)
   useEffect(() => {
     const unsub = window.profileBrowser?.onFocusOmnibox?.(() => {
@@ -208,6 +351,13 @@ export function GroupWorkspace() {
       } else if (isCmdOrCtrl && e.key.toLowerCase() === 'd') {
         e.preventDefault()
         handleToggleBookmark()
+      } else if (e.key === 'Escape') {
+        if (contextMenu.visible) {
+          setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+        }
+        if (editModal.open) {
+          setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -215,7 +365,20 @@ export function GroupWorkspace() {
       unsub?.()
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [activeTab, isBookmarked])
+  }, [activeTab, isBookmarked, contextMenu.visible, editModal.open])
+
+  // 全局点击自动关闭书签右键菜单
+  useEffect(() => {
+    function handleClickOutside() {
+      if (contextMenu.visible) {
+        setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+      }
+    }
+    window.addEventListener('click', handleClickOutside)
+    return () => {
+      window.removeEventListener('click', handleClickOutside)
+    }
+  }, [contextMenu.visible])
 
   if (!workspace) {
     return (
@@ -405,7 +568,14 @@ export function GroupWorkspace() {
           {/* 官方原版 Chrome 药丸形地址栏 */}
           <form className="arc-chrome-omnibox-form" onSubmit={handleNavigate}>
             <div className="arc-chrome-omnibox official-chrome-omnibox">
-              <Lock size={13} className="arc-lock-icon" />
+              <div
+                className="arc-chrome-lock-handle"
+                draggable={Boolean(activeTab?.url && !activeTab.url.startsWith('chrome://'))}
+                onDragStart={handleLockDragStart}
+                title="拖拽此小锁到书签栏可直接收藏"
+              >
+                <Lock size={13} className="arc-lock-icon" />
+              </div>
               <input
                 ref={omniboxInputRef}
                 type="text"
@@ -446,38 +616,62 @@ export function GroupWorkspace() {
           )}
         </header>
 
-        {/* 第二行：官方 Chrome 原版书签栏 (高 30px，紧贴在顶栏下方，点击 100% 灵敏秒开) */}
-        <div className="arc-chrome-bookmarks-bar official-chrome-bookmarks-bar">
+        {/* 第二行：官方 Chrome 原版书签栏 (高 30px，紧贴在顶栏下方，拖拽小锁直接收藏，右键完整菜单) */}
+        <div
+          className={`arc-chrome-bookmarks-bar official-chrome-bookmarks-bar ${isDragOverBar ? 'drag-over' : ''}`}
+          onDragOver={handleBarDragOver}
+          onDragLeave={handleBarDragLeave}
+          onDrop={handleBarDrop}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: null })
+          }}
+        >
           <div className="arc-bookmarks-items-row">
             <span className="arc-shared-badge" title="当前聚合窗口中所有环境共用此套收藏夹">
               <Star size={11} /> 共用收藏
             </span>
             {workspace?.bookmarks && workspace.bookmarks.length > 0 ? (
-              workspace.bookmarks.map((bm) => (
-                <div
-                  key={bm.url}
-                  className="arc-bookmark-pill official-bookmark-pill"
-                  onClick={() => handleBookmarkClick(bm.url)}
-                  title={`${bm.name}\n${bm.url}（点击打开）`}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <Globe size={12} className="arc-bm-icon" />
-                  <span className="arc-bm-name">{bm.name}</span>
-                  <button
-                    type="button"
-                    className="arc-bm-del"
-                    title="删除此收藏"
-                    onClick={(e) => handleRemoveBookmark(e, bm.url)}
+              workspace.bookmarks.map((bm, idx) => {
+                const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
+                return (
+                  <div
+                    key={`${bm.url}-${idx}`}
+                    className={`arc-bookmark-pill official-bookmark-pill ${draggedBookmarkIndex === idx ? 'is-dragging' : ''}`}
+                    draggable
+                    onDragStart={(e) => handleBookmarkDragStart(e, idx)}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    onDrop={(e) => handleBookmarkDropOnIndex(e, idx)}
+                    onClick={() => handleBookmarkClick(bm.url)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setContextMenu({ visible: true, x: e.clientX, y: e.clientY, bookmark: bm })
+                    }}
+                    title={`${cleanName}\n${bm.url}\n（点击打开，右键编辑，可拖拽调序）`}
+                    role="button"
+                    tabIndex={0}
                   >
-                    ×
-                  </button>
-                </div>
-              ))
+                    <Globe size={12} className="arc-bm-icon" />
+                    <span className="arc-bm-name">{cleanName}</span>
+                    <button
+                      type="button"
+                      className="arc-bm-del"
+                      title="删除此收藏"
+                      onClick={(e) => handleRemoveBookmark(e, bm.url)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              })
             ) : (
               <div className="arc-bookmarks-empty-hint">
                 <Star size={12} />
-                <span>在地址栏右侧点击 ⭐ 即可添加收藏（所有环境共用）</span>
+                <span>从地址栏拖拽 🔒 小锁至此，或点击 ⭐ 即可收藏（所有环境共用）</span>
               </div>
             )}
           </div>
@@ -490,6 +684,145 @@ export function GroupWorkspace() {
           </div>
         )}
       </main>
+
+      {/* 原生 Chrome 体验的书签右键菜单 (Context Menu) */}
+      {contextMenu.visible && (
+        <div
+          className="arc-chrome-context-menu"
+          style={{ left: Math.min(contextMenu.x, window.innerWidth - 180), top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.bookmark ? (
+            <>
+              <button
+                type="button"
+                className="arc-context-item"
+                onClick={() => {
+                  if (contextMenu.bookmark) handleBookmarkClick(contextMenu.bookmark.url)
+                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+                }}
+              >
+                <Globe size={13} />
+                <span>在当前标签打开</span>
+              </button>
+              <button
+                type="button"
+                className="arc-context-item"
+                onClick={() => {
+                  if (contextMenu.bookmark) handleNewTabWithUrl(contextMenu.bookmark.url)
+                }}
+              >
+                <ExternalLink size={13} />
+                <span>在新标签页打开</span>
+              </button>
+              <div className="arc-context-divider" />
+              <button
+                type="button"
+                className="arc-context-item"
+                onClick={() => handleOpenEditModal(contextMenu.bookmark)}
+              >
+                <Edit2 size={13} />
+                <span>编辑…</span>
+              </button>
+              <button
+                type="button"
+                className="arc-context-item"
+                onClick={() => {
+                  if (contextMenu.bookmark) handleCopyUrl(contextMenu.bookmark.url)
+                }}
+              >
+                <Copy size={13} />
+                <span>复制网址</span>
+              </button>
+              <div className="arc-context-divider" />
+              <button
+                type="button"
+                className="arc-context-item text-danger"
+                onClick={(e) => {
+                  if (contextMenu.bookmark) handleRemoveBookmark(e, contextMenu.bookmark.url)
+                  setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+                }}
+              >
+                <Trash2 size={13} />
+                <span>删除</span>
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="arc-context-item"
+              onClick={() => handleOpenEditModal(null)}
+            >
+              <Plus size={13} />
+              <span>添加书签…</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 编辑书签模态对话框 (Modal) */}
+      {editModal.open && (
+        <div
+          className="arc-modal-overlay"
+          onClick={() => setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })}
+        >
+          <div className="arc-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="arc-modal-header">
+              <span className="arc-modal-title">{editModal.isNew ? '添加书签' : '编辑书签'}</span>
+              <button
+                type="button"
+                className="arc-modal-close"
+                onClick={() => setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })}
+              >
+                ×
+              </button>
+            </div>
+            <div className="arc-modal-body">
+              <label className="arc-modal-field">
+                <span className="arc-field-label">名称</span>
+                <input
+                  type="text"
+                  className="arc-field-input"
+                  value={editModal.name}
+                  onChange={(e) => setEditModal({ ...editModal, name: e.target.value })}
+                  placeholder="书签名称"
+                  autoFocus
+                />
+              </label>
+              <label className="arc-modal-field">
+                <span className="arc-field-label">网址</span>
+                <input
+                  type="text"
+                  className="arc-field-input"
+                  value={editModal.url}
+                  onChange={(e) => setEditModal({ ...editModal, url: e.target.value })}
+                  placeholder="https://…"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveEditModal()
+                  }}
+                />
+              </label>
+            </div>
+            <div className="arc-modal-footer">
+              <button
+                type="button"
+                className="arc-modal-btn btn-secondary"
+                onClick={() => setEditModal({ open: false, isNew: false, oldUrl: '', name: '', url: '' })}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="arc-modal-btn btn-primary"
+                onClick={handleSaveEditModal}
+                disabled={!editModal.url.trim()}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
