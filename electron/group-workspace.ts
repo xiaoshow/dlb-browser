@@ -341,10 +341,19 @@ export class GroupWorkspaceManager {
 
     // Load frontend page
     const html = this.getHtmlPath(group.id)
+    win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+      if (level >= 2) {
+        console.error(`[Workspace Frontend Error] ${message} (${sourceId}:${line})`)
+      }
+    })
+
     if (html.isUrl) {
       await win.loadURL(html.path)
     } else {
-      await win.loadFile(html.path, { search: `?mode=workspace&groupId=${encodeURIComponent(group.id)}` })
+      await win.loadFile(html.path, {
+        query: { mode: 'workspace', groupId: group.id },
+        search: `?mode=workspace&groupId=${encodeURIComponent(group.id)}`,
+      })
     }
 
     win.once('ready-to-show', () => {

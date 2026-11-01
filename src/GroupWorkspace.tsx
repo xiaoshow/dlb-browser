@@ -109,6 +109,9 @@ export function GroupWorkspace() {
     scope: 'shared',
   })
   const omniboxInputRef = useRef<HTMLInputElement>(null)
+  const activeTab = workspace?.tabs.find((t) => t.id === workspace.activeTabId)
+  const activeTabRef = useRef(activeTab)
+  activeTabRef.current = activeTab
 
   useEffect(() => {
     // 初始获取工作台状态
@@ -123,21 +126,18 @@ export function GroupWorkspace() {
     // 监听广播更新
     const unsubscribe = window.profileBrowser?.onWorkspaceState((state) => {
       setWorkspace(state)
-      const active = state.tabs.find((t) => t.id === state.activeTabId)
-      if (active && !isEditingUrl) {
-        setUrlInput(active.url)
-      }
     })
 
     // 监听原生右键菜单触发的动作
     const unsubTrigger = window.profileBrowser?.onTriggerBookmarkAction?.((payload) => {
+      const curTab = activeTabRef.current
       if (payload.action === 'open' && payload.url) {
-        if (!activeTab) return
+        if (!curTab) return
         setUrlInput(payload.url)
         setIsEditingUrl(false)
-        void window.profileBrowser?.workspaceNavigate(activeTab.id, payload.url)
+        void window.profileBrowser?.workspaceNavigate(curTab.id, payload.url)
       } else if (payload.action === 'new-tab' && payload.url) {
-        if (activeTab) void window.profileBrowser?.workspaceNewTab(activeTab.profileId, payload.url)
+        if (curTab) void window.profileBrowser?.workspaceNewTab(curTab.profileId, payload.url)
       } else if (payload.action === 'edit' && payload.bookmark) {
         handleOpenEditModal(payload.bookmark, payload.scope || 'shared')
       } else if (payload.action === 'add') {
@@ -149,9 +149,7 @@ export function GroupWorkspace() {
       if (unsubscribe) unsubscribe()
       if (unsubTrigger) unsubTrigger()
     }
-  }, [isEditingUrl, activeTab])
-
-  const activeTab = workspace?.tabs.find((t) => t.id === workspace.activeTabId)
+  }, [])
 
   useEffect(() => {
     if (activeTab && !isEditingUrl) {
