@@ -1454,6 +1454,14 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
 .official-bookmark-pill {
   cursor: pointer !important;
 }
+.arc-bookmark-pill.icon-only {
+  padding: 0 4px !important;
+  min-width: 22px;
+  justify-content: center;
+}
+.arc-bookmark-pill.icon-only .arc-bm-favicon {
+  margin-right: 0 !important;
+}
 .arc-bm-icon {
   color: #5f6368;
   flex-shrink: 0;

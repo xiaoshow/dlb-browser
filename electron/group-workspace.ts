@@ -15,6 +15,8 @@ import {
   removeSharedBookmark,
   updateSharedBookmark,
   reorderSharedBookmarks,
+  toggleSharedBookmarkHideTitle,
+  toggleProfileBookmarkHideTitle,
   syncStoredBookmarkFavicon,
   type BookmarkItem,
 } from './cookie-bridge.js'
@@ -843,6 +845,22 @@ export class GroupWorkspaceManager {
     if (ws) this.broadcastState(ws)
   }
 
+  async toggleBookmarkHideTitle(
+    groupId: string,
+    profileId: string,
+    url: string,
+    scope: 'shared' | 'profile' = 'shared'
+  ) {
+    const ws = this.workspaces.get(groupId)
+    if (scope === 'profile' && profileId) {
+      const updated = await toggleProfileBookmarkHideTitle(app.getPath('userData'), profileId, url)
+      this.profileBookmarks.set(profileId, updated)
+    } else {
+      this.sharedBookmarks = await toggleSharedBookmarkHideTitle(app.getPath('userData'), url)
+    }
+    if (ws) this.broadcastState(ws)
+  }
+
   setModalActive(groupId: string, active: boolean) {
     const ws = this.workspaces.get(groupId)
     if (!ws) return
@@ -922,6 +940,12 @@ export class GroupWorkspaceManager {
               bookmark,
               scope,
             })
+          },
+        },
+        {
+          label: bookmark.hideTitle ? '显示文字' : '仅显示图标（隐藏文字）',
+          click: () => {
+            void this.toggleBookmarkHideTitle(groupId, profileId, bookmark.url, scope)
           },
         },
         {

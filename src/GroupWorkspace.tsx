@@ -110,9 +110,11 @@ function ChromeFolderIcon() {
 function BookmarkFavicon({
   url,
   faviconCache,
+  isIconOnly,
 }: {
   url: string
   faviconCache?: Record<string, string>
+  isIconOnly?: boolean
 }) {
   const [loadError, setLoadError] = useState(false)
 
@@ -124,6 +126,8 @@ function BookmarkFavicon({
       faviconUrl = faviconCache[origin]
     } catch {}
   }
+
+  const mr = isIconOnly ? 0 : 4
 
   if (faviconUrl && !loadError) {
     return (
@@ -137,7 +141,7 @@ function BookmarkFavicon({
           height: 14,
           borderRadius: 2,
           flexShrink: 0,
-          marginRight: 4,
+          marginRight: mr,
           objectFit: 'contain',
           verticalAlign: 'middle',
         }}
@@ -153,7 +157,7 @@ function BookmarkFavicon({
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ flexShrink: 0, marginRight: 4, verticalAlign: 'middle' }}
+      style={{ flexShrink: 0, marginRight: mr, verticalAlign: 'middle' }}
     >
       <path
         d="M3.5 2C2.67 2 2 2.67 2 3.5V12.5C2 13.33 2.67 14 3.5 14H12.5C13.33 14 14 13.33 14 12.5V5.5L10.5 2H3.5Z"
@@ -855,12 +859,13 @@ export function GroupWorkspaceInner() {
             {sharedBookmarks.length > 0 ? (
               sharedBookmarks.map((bm, idx) => {
                 const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
+                const isHideTitle = Boolean(bm.hideTitle)
                 const isItemDragging =
                   draggedBookmarkIndex?.scope === 'shared' && draggedBookmarkIndex.idx === idx
                 return (
                   <div
                     key={`${bm.url}-${idx}`}
-                    className={`arc-bookmark-pill official-bookmark-pill ${isItemDragging ? 'is-dragging' : ''}`}
+                    className={`arc-bookmark-pill official-bookmark-pill ${isHideTitle ? 'icon-only' : ''} ${isItemDragging ? 'is-dragging' : ''}`}
                     draggable
                     onDragStart={(e) => handleBookmarkDragStart(e, idx, 'shared')}
                     onDragOver={(e) => {
@@ -870,12 +875,12 @@ export function GroupWorkspaceInner() {
                     onDrop={(e) => handleBookmarkDropOnIndex(e, idx, 'shared')}
                     onClick={() => handleBookmarkClick(bm.url)}
                     onContextMenu={(e) => handleShowBookmarkContextMenu(e, bm, 'shared')}
-                    title={`${cleanName}\n${bm.url}\n（🌐公共收藏 · 右键可转为本号专属）`}
+                    title={`${cleanName}\n${bm.url}\n（🌐公共收藏 · 右键可设置仅显示图标）`}
                     role="button"
                     tabIndex={0}
                   >
-                    <BookmarkFavicon url={bm.url} faviconCache={workspace?.faviconCache} />
-                    <span className="arc-bm-name">{cleanName}</span>
+                    <BookmarkFavicon url={bm.url} faviconCache={workspace?.faviconCache} isIconOnly={isHideTitle} />
+                    {!isHideTitle && <span className="arc-bm-name">{cleanName}</span>}
                   </div>
                 )
               })
@@ -904,12 +909,13 @@ export function GroupWorkspaceInner() {
               {profileBookmarks.length > 0 ? (
                 profileBookmarks.map((bm, idx) => {
                   const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
+                  const isHideTitle = Boolean(bm.hideTitle)
                   const isItemDragging =
                     draggedBookmarkIndex?.scope === 'profile' && draggedBookmarkIndex.idx === idx
                   return (
                     <div
                       key={`${bm.url}-${idx}`}
-                      className={`arc-bookmark-pill official-bookmark-pill arc-profile-bm-pill ${isItemDragging ? 'is-dragging' : ''}`}
+                      className={`arc-bookmark-pill official-bookmark-pill arc-profile-bm-pill ${isHideTitle ? 'icon-only' : ''} ${isItemDragging ? 'is-dragging' : ''}`}
                       draggable
                       onDragStart={(e) => handleBookmarkDragStart(e, idx, 'profile')}
                       onDragOver={(e) => {
@@ -919,12 +925,12 @@ export function GroupWorkspaceInner() {
                       onDrop={(e) => handleBookmarkDropOnIndex(e, idx, 'profile')}
                       onClick={() => handleBookmarkClick(bm.url)}
                       onContextMenu={(e) => handleShowBookmarkContextMenu(e, bm, 'profile')}
-                      title={`${cleanName}\n${bm.url}\n（👤#${activeTab.profileNumber}专属 · 右键可转为公共）`}
+                      title={`${cleanName}\n${bm.url}\n（👤#${activeTab.profileNumber}专属 · 右键可设置仅显示图标）`}
                       role="button"
                       tabIndex={0}
                     >
-                      <BookmarkFavicon url={bm.url} faviconCache={workspace?.faviconCache} />
-                      <span className="arc-bm-name">{cleanName}</span>
+                      <BookmarkFavicon url={bm.url} faviconCache={workspace?.faviconCache} isIconOnly={isHideTitle} />
+                      {!isHideTitle && <span className="arc-bm-name">{cleanName}</span>}
                     </div>
                   )
                 })

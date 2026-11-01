@@ -127,6 +127,7 @@ export interface BookmarkItem {
   name: string
   url: string
   favicon?: string
+  hideTitle?: boolean
 }
 
 export interface WorkspaceState {

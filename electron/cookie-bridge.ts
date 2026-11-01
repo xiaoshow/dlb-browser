@@ -125,6 +125,7 @@ export interface BookmarkItem {
   name: string
   url: string
   favicon?: string
+  hideTitle?: boolean
 }
 
 export async function readProfileBookmarks(userDataDir: string, profileId: string): Promise<BookmarkItem[]> {
@@ -140,6 +141,7 @@ export async function readProfileBookmarks(userDataDir: string, profileId: strin
         name: c.name || c.url,
         url: c.url,
         favicon: c.favicon || undefined,
+        hideTitle: Boolean(c.hideTitle),
       }))
   } catch {
     return []
@@ -439,5 +441,46 @@ export async function reorderSharedBookmarks(
     await writeFile(filePath, JSON.stringify(newList, null, 2), { mode: 0o600 })
   } catch {}
   return newList
+}
+
+export async function toggleSharedBookmarkHideTitle(
+  userDataDir: string,
+  url: string
+): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
+  let list: BookmarkItem[] = []
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) list = parsed
+  } catch {}
+
+  const target = list.find((b) => b.url === url)
+  if (target) {
+    target.hideTitle = !target.hideTitle
+    await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
+  }
+  return list
+}
+
+export async function toggleProfileBookmarkHideTitle(
+  userDataDir: string,
+  profileId: string,
+  url: string
+): Promise<BookmarkItem[]> {
+  const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
+  try {
+    const raw = await readFile(filePath, 'utf8')
+    const data = JSON.parse(raw)
+    const children = data?.roots?.bookmark_bar?.children
+    if (Array.isArray(children)) {
+      const target = children.find((c: any) => c?.url === url)
+      if (target) {
+        target.hideTitle = !target.hideTitle
+        await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
+      }
+    }
+  } catch {}
+  return readProfileBookmarks(userDataDir, profileId)
 }
 
