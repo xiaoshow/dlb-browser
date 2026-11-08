@@ -179,6 +179,14 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
       BADGE_EXTENSION_ID,
     ])),
   }
+  const downloadsPath = join(homedir(), 'Downloads')
+  prefs.download = {
+    ...(prefs.download || {}),
+    default_directory: downloadsPath,
+    directory_upgrade: true,
+    prompt_for_download: false,
+    extensions_to_open: '',
+  }
   const tags = [...new Set((profile.alias || profile.notes || '').split(/[,，]/).map((t: string) => t.trim()).filter(Boolean))]
   const tagsStr = tags.length ? tags.join(' · ') : ''
   const proxyPart = proxy?.name && proxy.kind !== 'direct' ? ` · ⚡️${proxy.name}` : ''
@@ -431,26 +439,43 @@ export class NativeBrowsers {
         running.lastPageTimer = setTimeout(() => { if (this.has(id) && pages.size === 0) void this.close(id).catch(() => undefined) }, 350)
       })
       await pipe.send('Target.setDiscoverTargets', { discover: true })
+      // 开启全局下载能力，默认保存至系统的 Downloads 目录，绝不拦截下载流
+      const downloadsPath = join(homedir(), 'Downloads')
+      await pipe.send('Browser.setDownloadBehavior', {
+        behavior: 'allowAndName',
+        downloadPath: downloadsPath,
+        eventsEnabled: true,
+      }).catch(() => {
+        return pipe.send('Browser.setDownloadBehavior', {
+          behavior: 'allow',
+          downloadPath: downloadsPath,
+          eventsEnabled: true,
+        }).catch(() => undefined)
+      })
+
       const initialized = new Set<string>()
       pipe.on('Target.targetDestroyed', ({ targetId }) => initialized.delete(targetId))
       const setup = async (event: any) => {
         const sid = event.sessionId
         try {
-          if (initialized.has(event.targetInfo.targetId)) { await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined); return }
+          if (initialized.has(event.targetInfo.targetId)) {
+            await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
+            return
+          }
           initialized.add(event.targetInfo.targetId)
           const type = event.targetInfo.type
           // Native worker identity comes from process switches; resume immediately.
           if (isFingerprintKernel && ['worker', 'shared_worker', 'service_worker'].includes(type)) {
-            await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid)
+            await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
             return
           }
           const url = event.targetInfo.url || ''
 
           if (['page','iframe'].includes(type) && !/^chrome-extension:/.test(url)) {
-            const command = (method: string, params: object) => pipe.send(method, params, sid)
+            const command = (method: string, params: object) => pipe.send(method, params, sid).catch(() => undefined)
             if (profile.timezone && profile.timezone !== 'local') await command('Emulation.setTimezoneOverride', { timezoneId: profile.timezone })
-            if (profile.locale) await command('Emulation.setLocaleOverride', { locale: profile.locale }).catch(error => { if (!String(error).includes('Another locale override is already in effect')) throw error })
-            if (profile.userAgentMode === 'custom') await command('Emulation.setUserAgentOverride', { userAgent: profile.userAgent, ...(profile.locale ? { acceptLanguage: profile.locale } : {}) }).catch(() => undefined)
+            if (profile.locale) await command('Emulation.setLocaleOverride', { locale: profile.locale })
+            if (profile.userAgentMode === 'custom') await command('Emulation.setUserAgentOverride', { userAgent: profile.userAgent, ...(profile.locale ? { acceptLanguage: profile.locale } : {}) })
             await command('Emulation.setHardwareConcurrencyOverride', { hardwareConcurrency: effectiveHC })
             if (profile.fingerprint?.geolocation) await command('Emulation.setGeolocationOverride', profile.fingerprint.geolocation)
             if (profile.resolution) await command('Emulation.setDeviceMetricsOverride', { ...profile.resolution, screenWidth: profile.resolution.width, screenHeight: profile.resolution.height, deviceScaleFactor: profile.fingerprint?.pixelRatio || 1, mobile: false })
@@ -463,10 +488,11 @@ export class NativeBrowsers {
             // If using native C++ fingerprint kernel, Blink handles fingerprinting cleanly at the C++ layer.
             // Do NOT inject observable JS Proxies (e.g. Function.prototype.toString hooks) that trigger Cloudflare Turnstile / Botguard.
             if (!isFingerprintKernel) {
-              await command('Page.enable', {}).catch(() => undefined)
-              await command('Page.addScriptToEvaluateOnNewDocument', { source: `if (!/^(chrome|chrome-extension):$/.test(location.protocol)) { ${fingerprintSource(profile)} }` }).catch(() => undefined)
+              await command('Page.enable', {})
+              await command('Page.addScriptToEvaluateOnNewDocument', { source: `if (!/^(chrome|chrome-extension):$/.test(location.protocol)) { ${fingerprintSource(profile)} }` })
             }
-            await command('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true, filter: [{ type: 'tab', exclude: true }, { type: 'browser', exclude: true }, {}] }).catch(() => undefined)
+            // 回归原生铁律：子窗口/弹窗绝对不开启 waitForDebuggerOnStart，绝不卡死在 about:blank
+            await command('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true, filter: [{ type: 'tab', exclude: true }, { type: 'browser', exclude: true }, {}] })
           } else if (['worker', 'shared_worker', 'service_worker'].includes(type) && !/^chrome-extension:/.test(url)) {
             const command = (method: string, params: object) => pipe.send(method, params, sid).catch(() => undefined)
             if (profile.timezone && profile.timezone !== 'local') await command('Emulation.setTimezoneOverride', { timezoneId: profile.timezone })
@@ -477,14 +503,13 @@ export class NativeBrowsers {
           await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
         } catch (error) {
           if (child.exitCode !== null || this.closing.has(id) || !pipe.sessions.has(event.targetInfo.targetId)) return
-          if (headless) console.error('Native target initialization:', event.targetInfo.type, error)
-          failed = true
-          // Never silently open a page after environment initialization failed.
-          await pipe.send('Target.closeTarget', { targetId: event.targetInfo.targetId }).catch(() => undefined)
+          // 关键修复：绝不误杀用户的 Google 登录弹窗或新标签页！如果只是调试器命令在瞬态目标上遇到异常，继续放行让页面原生渲染！
+          await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
         }
       }
       pipe.on('Target.attachedToTarget', event => { void setup(event) })
-      await pipe.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true, filter: [{ type: 'tab', exclude: true }, { type: 'browser', exclude: true }, {}] })
+      // 回归原生铁律：全局 autoAttach 设为 waitForDebuggerOnStart: false，所有新窗口和弹窗毫秒级原生直出
+      await pipe.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true, filter: [{ type: 'tab', exclude: true }, { type: 'browser', exclude: true }, {}] })
       const homepage = join(directory, 'prism-start.html')
       await writeFile(homepage, nativeHome(profile, number, proxy, location, version.product), { mode: 0o600 })
       const { targetId } = await pipe.send('Target.createTarget', { url: pathToFileURL(homepage).href })

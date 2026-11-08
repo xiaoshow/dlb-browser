@@ -63,6 +63,7 @@ export class GroupWorkspaceManager {
   private profileBookmarks = new Map<string, BookmarkItem[]>()
   private sharedBookmarks: BookmarkItem[] = []
   private importedProfileCookies = new Set<string>()
+  private downloadConfiguredSessions = new Set<string>()
   private initializedSessions = new Map<string, string>()
   private originFaviconCache = new Map<string, string>()
   private faviconsLoaded = false
@@ -464,6 +465,16 @@ export class GroupWorkspaceManager {
       })
     } catch {}
 
+    // 监听下载事件，自动保存至用户系统的 Downloads 目录，无需弹窗打扰
+    if (!this.downloadConfiguredSessions.has(profile.id)) {
+      this.downloadConfiguredSessions.add(profile.id)
+      ses.on('will-download', (_event, item) => {
+        const downloadsPath = app.getPath('downloads')
+        const targetPath = join(downloadsPath, item.getFilename())
+        item.setSavePath(targetPath)
+      })
+    }
+
     // 仅在首次初始化全新 Profile 分区时导入一次现有 Cookies，绝不在已有会话中反复重放覆盖，避免触发 Google 旋转封禁
     const markerFile = join(app.getPath('userData'), 'Partitions', `profile-${profile.id}`, '.cookies_migrated')
     const markerExists = await access(markerFile).then(() => true).catch(() => false)
@@ -743,8 +754,22 @@ export class GroupWorkspaceManager {
       view,
     }
 
-    // Core rule: setWindowOpenHandler creates a child tab right adjacent to this tab with the EXACT SAME COLOR & PROFILE!
-    view.webContents.setWindowOpenHandler(({ url }) => {
+    // Core rule: setWindowOpenHandler
+    // 对于明确的 OAuth 登录小弹窗（如 Google 登录、带小尺寸 popup 特征），允许原生弹窗并保持父子 window.opener 通信
+    view.webContents.setWindowOpenHandler(({ url, disposition, features }) => {
+      const isPopup = features && (features.includes('popup') || features.includes('width=') || features.includes('height='))
+      const isAuthUrl = /accounts\.google\.com|oauth|auth|login/i.test(url)
+      if (isPopup || (isAuthUrl && disposition === 'new-window')) {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            autoHideMenuBar: true,
+            width: 520,
+            height: 650,
+            modal: false,
+          },
+        }
+      }
       void this.createAdjacentTab(ws.groupId, tabId, url)
       return { action: 'deny' }
     })
