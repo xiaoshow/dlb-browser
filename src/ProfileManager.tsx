@@ -50,6 +50,7 @@ type Props = {
   onStop: (id: string) => Promise<void>
   onEdit: (p: BrowserProfile) => void
   onUpdateAlias: (id: string, alias: string) => void
+  onRenameProfile?: (id: string, name: string) => void
   onNew: () => void
   onProxies: () => void
   onModeChange: (mode: 'tabs' | 'windows') => Promise<void>
@@ -62,11 +63,13 @@ type Props = {
   onImportProfiles: () => void
 }
 
-export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onEdit, onUpdateAlias, onNew, onProxies, onProtect, onDelete, onCookieModal, onExportProfiles, onImportProfiles }: Props) {
+export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onEdit, onUpdateAlias, onRenameProfile, onNew, onProxies, onProtect, onDelete, onCookieModal, onExportProfiles, onImportProfiles }: Props) {
   const [folderName, setFolderName] = useState('')
   const [newFolder, setNewFolder] = useState(false)
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
   const [editingFolderName, setEditingFolderName] = useState('')
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
+  const [editingProfileName, setEditingProfileName] = useState('')
   const [moveTo, setMoveTo] = useState('')
   const [query, setQuery] = useState(''), [group, setGroup] = useState('')
   const [busy, setBusy] = useState<string[]>([]), [selected, setSelected] = useState<string[]>([])
@@ -97,6 +100,29 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
     const nextProfiles = state.profiles.map(p => p.groupId === folderId ? { ...p, groupId: '' } : p)
     onOrganize({ ...state, groups: nextGroups, profiles: nextProfiles })
     if (group === folderId) setGroup('')
+  }
+
+  function startRename(p: BrowserProfile) {
+    setEditingProfileId(p.id)
+    setEditingProfileName(p.name)
+  }
+
+  function handleFinishRename(id: string) {
+    if (editingProfileId === id) {
+      const trimmed = editingProfileName.trim()
+      const original = state.profiles.find(p => p.id === id)?.name
+      if (trimmed && trimmed !== original) {
+        if (onRenameProfile) {
+          onRenameProfile(id, trimmed)
+        } else {
+          onOrganize({
+            ...state,
+            profiles: state.profiles.map(p => p.id === id ? { ...p, name: trimmed } : p),
+          })
+        }
+      }
+      setEditingProfileId(null)
+    }
   }
 
   async function confirmDelete() {
@@ -341,8 +367,41 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
         <td>
           <div className="profile-name-cell">
             <span className="environment-avatar notion-avatar"><img src={avatarSrc} alt="" /></span>
-            <div>
-              <strong>{p.name}</strong>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {editingProfileId === p.id ? (
+                <input
+                  type="text"
+                  className="profile-inline-rename-input"
+                  autoFocus
+                  value={editingProfileName}
+                  onChange={(e) => setEditingProfileName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleFinishRename(p.id)
+                    if (e.key === 'Escape') setEditingProfileId(null)
+                  }}
+                  onBlur={() => handleFinishRename(p.id)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <div
+                  className="profile-name-title-row"
+                  title="点击或双击快速修改名称"
+                  onClick={() => startRename(p)}
+                >
+                  <strong>{p.name}</strong>
+                  <button
+                    type="button"
+                    className="inline-rename-pencil"
+                    title="快速改名"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      startRename(p)
+                    }}
+                  >
+                    <Pencil size={11} />
+                  </button>
+                </div>
+              )}
               <small>{state.groups.find(g=>g.id===p.groupId)?.name||'未分组'}{p.notes ? ` · ${p.notes}` : ''}</small>
             </div>
           </div>
@@ -394,6 +453,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
             {live&&<button className="secondary stop-profile" title={`停止 ${p.name}`} onClick={()=>void operate(p,true)}><Square size={13}/>停止</button>}
             <button className="icon-button" title={`复制 ${p.name}（仅继承代理网络，全新指纹环境）`} onClick={()=>duplicateProfile(p)}><Copy size={16}/></button>
             <button className="icon-button" title={`导入 / 导出 ${p.name} 的 Cookie`} onClick={()=>onCookieModal(p)}><Cookie size={17}/></button>
+            <button className="icon-button" title={`改名 ${p.name}`} onClick={()=>startRename(p)}><Pencil size={15}/></button>
             <button className="icon-button" title={`设置 ${p.name}`} onClick={()=>onEdit(p)}><Settings2 size={17}/></button>
             <button className="icon-button danger-icon" title={`删除 ${p.name}`} onClick={()=>setConfirmDeleteIds([p.id])}><Trash2 size={16}/></button>
           </div>

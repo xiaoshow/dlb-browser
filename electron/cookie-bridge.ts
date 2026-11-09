@@ -280,39 +280,51 @@ export async function reorderProfileBookmarks(
  */
 export async function readSharedBookmarks(userDataDir: string, initialProfileIds: string[] = []): Promise<BookmarkItem[]> {
   const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
+  let list: BookmarkItem[] = []
+  let fromFile = false
   try {
     const raw = await readFile(filePath, 'utf8')
-    const list = JSON.parse(raw)
-    if (Array.isArray(list)) return list
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      list = parsed
+      fromFile = true
+    }
   } catch {}
 
-  // 初始如果为空，尝试从各个选中环境的原生书签中合并出初始共享池
-  const merged: BookmarkItem[] = []
-  const seenUrls = new Set<string>()
-
-  for (const pid of initialProfileIds) {
-    const items = await readProfileBookmarks(userDataDir, pid)
-    for (const it of items) {
-      if (!seenUrls.has(it.url)) {
-        seenUrls.add(it.url)
-        merged.push(it)
+  if (!fromFile) {
+    // 初始如果为空，尝试从各个选中环境的原生书签中合并出初始共享池
+    const seenUrls = new Set<string>()
+    for (const pid of initialProfileIds) {
+      const items = await readProfileBookmarks(userDataDir, pid)
+      for (const it of items) {
+        if (!seenUrls.has(it.url)) {
+          seenUrls.add(it.url)
+          list.push(it)
+        }
       }
     }
   }
 
-  // 默认提供几个常用极客与搜索入口（如尚未有任何书签）
-  if (merged.length === 0) {
-    merged.push(
-      { id: '1', name: 'Google', url: 'https://www.google.com' },
-      { id: '2', name: 'YouTube', url: 'https://www.youtube.com' },
-      { id: '3', name: 'GitHub', url: 'https://github.com' }
-    )
+  // 默认必须包含 Google 和 Gmail 官方书签
+  const hasGoogle = list.some(b => String(b.url).includes('google.com') && !String(b.url).includes('mail.google.com'))
+  const hasGmail = list.some(b => String(b.url).includes('mail.google.com') || String(b.url).includes('gmail.com'))
+  let needPersist = !fromFile
+
+  if (!hasGoogle) {
+    list.unshift({ id: 'default-google', name: 'Google', url: 'https://www.google.com/' })
+    needPersist = true
+  }
+  if (!hasGmail) {
+    list.splice(hasGoogle ? 1 : 0, 0, { id: 'default-gmail', name: 'Gmail', url: 'https://mail.google.com/' })
+    needPersist = true
   }
 
-  try {
-    await writeFile(filePath, JSON.stringify(merged, null, 2), { mode: 0o600 })
-  } catch {}
-  return merged
+  if (needPersist) {
+    try {
+      await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
+    } catch {}
+  }
+  return list
 }
 
 export async function addSharedBookmark(

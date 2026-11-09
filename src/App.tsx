@@ -219,6 +219,12 @@ function App() {
       const current = stateRef.current
       updateState({ ...current, profiles: current.profiles.map(p => p.id === id ? { ...p, alias: alias || undefined } : p) })
       setToast(alias ? `标签：${alias}` : '已清空标签')
+    }} onRenameProfile={(id, name) => {
+      const trimmed = name.trim()
+      if (!trimmed) return
+      const current = stateRef.current
+      updateState({ ...current, profiles: current.profiles.map(p => p.id === id ? { ...p, name: trimmed } : p) })
+      setToast(`已改名为：${trimmed}`)
     }} onNew={() => setNewProfileModal(true)} onProxies={() => setActiveNav('proxies')} onProtect={(ids) => { const current = stateRef.current; updateState({ ...current, profiles: current.profiles.map(p => ids.includes(p.id) ? { ...p, fingerprint: { ...p.fingerprint, ...stableFingerprint(p.fingerprint?.seed || p.id) }, webRTCPolicy: 'proxy-only' } : p) }); setToast('已保存稳定保护；运行中的 Profile 停止后再启动生效，种子保持不变') }} onModeChange={changeMode} modeBusy={changingMode} onDelete={async (ids) => {
       const res = await window.profileBrowser?.deleteProfiles(ids)
       if (res?.ok && res.state) {

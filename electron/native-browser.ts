@@ -251,12 +251,30 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     type: 'url',
     url: 'https://ip.ping0.cc/',
   }
+  const googleNode = {
+    date_added: nowChrome,
+    date_last_used: '0',
+    guid: '00000000-0000-4000-8000-000000000003',
+    id: '90003',
+    name: 'Google',
+    type: 'url',
+    url: 'https://www.google.com/',
+  }
+  const gmailNode = {
+    date_added: nowChrome,
+    date_last_used: '0',
+    guid: '00000000-0000-4000-8000-000000000004',
+    id: '90004',
+    name: 'Gmail',
+    type: 'url',
+    url: 'https://mail.google.com/',
+  }
   if (!bm || !bm.roots?.bookmark_bar) {
     bm = {
       version: 1,
       roots: {
         bookmark_bar: {
-          children: [ping0Node],
+          children: [googleNode, gmailNode, ping0Node],
           date_added: nowChrome,
           date_modified: nowChrome,
           guid: '0bc5d13f-2cba-5d74-951f-3f233fe6c908',
@@ -271,8 +289,16 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   } else if (Array.isArray(bm.roots.bookmark_bar.children)) {
     const children = bm.roots.bookmark_bar.children.filter((c: any) => c?.guid !== badgeNode.guid && c?.url !== homepageUrl)
     const hasPing0 = children.some((c: any) => c?.guid === ping0Node.guid || String(c?.url || '').includes('ping0.cc'))
+    const hasGmail = children.some((c: any) => c?.guid === gmailNode.guid || String(c?.url || '').includes('mail.google.com') || String(c?.url || '').includes('gmail.com'))
+    const hasGoogle = children.some((c: any) => c?.guid === googleNode.guid || (String(c?.url || '').includes('google.com') && !String(c?.url || '').includes('mail.google.com')))
+
+    const defaultNodes = []
+    if (!hasGoogle) defaultNodes.push(googleNode)
+    if (!hasGmail) defaultNodes.push(gmailNode)
+    if (!hasPing0) defaultNodes.push(ping0Node)
+
     // Remove only our generated profile-home bookmark, preserving user bookmarks.
-    bm.roots.bookmark_bar.children = hasPing0 ? children : [ping0Node, ...children]
+    bm.roots.bookmark_bar.children = defaultNodes.length ? [...defaultNodes, ...children] : children
   }
   await writeFile(bookmarksPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
 }
