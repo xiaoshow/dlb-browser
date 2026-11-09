@@ -172,6 +172,22 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     show_ai_mode_omnibox_button: false,
     show_search_tools: false,
   }
+  // 注入官方 Google 默认搜索引擎，确保在原生 Chromium 地址栏打字直接回车调用 Google 搜索
+  prefs.default_search_provider_data = {
+    template_url_data: {
+      short_name: 'Google',
+      keyword: 'google.com',
+      url: 'https://www.google.com/search?q={searchTerms}',
+      suggestions_url: 'https://www.google.com/complete/search?client=chrome&q={searchTerms}',
+      favicon_url: 'https://www.google.com/favicon.ico',
+      safe_for_autoreplace: true,
+      is_active: 1,
+      date_created: '0',
+      last_modified: '0',
+      synced_guid: 'google_search_provider_default',
+    },
+  }
+  prefs.countryid_at_install = 224
   prefs.extensions = {
     ...(prefs.extensions || {}),
     pinned_extensions: Array.from(new Set([
@@ -233,72 +249,81 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   let bm: any = null
   try { bm = JSON.parse(await readFile(bookmarksPath, 'utf8')) } catch {}
   const nowChrome = String((BigInt(Date.now()) + 11644473600000n) * 1000n)
-  const badgeNode = {
-    date_added: nowChrome,
-    date_last_used: '0',
-    guid: '00000000-0000-4000-8000-000000000001',
-    id: '90001',
-    name: badgeTitle,
-    type: 'url',
-    url: homepageUrl,
+
+  // 1. 读取全局公用书签池（左列），保障所有环境同步拥有一致的公共收藏
+  const sharedPath = join(directory, '../../workspace-shared-bookmarks.json')
+  let sharedItems: Array<{ id: string; name: string; url: string; hideTitle?: boolean }> = []
+  try {
+    const raw = await readFile(sharedPath, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) sharedItems = parsed
+  } catch {}
+
+  // 兜底保障：公用区默认必须拥有 Google、Gmail 与 ip.ping0.cc
+  if (!sharedItems.some(b => String(b.url).includes('google.com') && !String(b.url).includes('mail.google.com'))) {
+    sharedItems.unshift({ id: 'default-google', name: 'Google', url: 'https://www.google.com/' })
   }
-  const ping0Node = {
-    date_added: nowChrome,
-    date_last_used: '0',
-    guid: '00000000-0000-4000-8000-000000000002',
-    id: '90002',
-    name: '🌐 ip.ping0.cc',
-    type: 'url',
-    url: 'https://ip.ping0.cc/',
+  if (!sharedItems.some(b => String(b.url).includes('mail.google.com') || String(b.url).includes('gmail.com'))) {
+    sharedItems.splice(1, 0, { id: 'default-gmail', name: 'Gmail', url: 'https://mail.google.com/' })
   }
-  const googleNode = {
-    date_added: nowChrome,
-    date_last_used: '0',
-    guid: '00000000-0000-4000-8000-000000000003',
-    id: '90003',
-    name: 'Google',
-    type: 'url',
-    url: 'https://www.google.com/',
+  if (!sharedItems.some(b => String(b.url).includes('ping0.cc'))) {
+    sharedItems.push({ id: '90002', name: '🌐 ip.ping0.cc', url: 'https://ip.ping0.cc/' })
   }
-  const gmailNode = {
-    date_added: nowChrome,
-    date_last_used: '0',
-    guid: '00000000-0000-4000-8000-000000000004',
-    id: '90004',
-    name: 'Gmail',
-    type: 'url',
-    url: 'https://mail.google.com/',
-  }
-  if (!bm || !bm.roots?.bookmark_bar) {
-    bm = {
-      version: 1,
-      roots: {
-        bookmark_bar: {
-          children: [googleNode, gmailNode, ping0Node],
-          date_added: nowChrome,
-          date_modified: nowChrome,
-          guid: '0bc5d13f-2cba-5d74-951f-3f233fe6c908',
-          id: '1',
-          name: 'Bookmarks bar',
-          type: 'folder',
-        },
-        other: { children: [], date_added: nowChrome, date_modified: '0', guid: '82b081ec-3dd3-529c-8475-ab6c344590dd', id: '2', name: 'Other bookmarks', type: 'folder' },
-        synced: { children: [], date_added: nowChrome, date_modified: '0', guid: '4cf2e351-0e85-532b-bb37-df045d8f8d0f', id: '3', name: 'Mobile bookmarks', type: 'folder' },
-      },
+
+  // 组装左列：公用书签节点
+  const sharedUrls = new Set<string>()
+  const sharedNodes = sharedItems.map((item, idx) => {
+    sharedUrls.add(item.url)
+    const cleanName = item.name.replace(/^[🌐\s]+/, '').trim() || item.name
+    return {
+      date_added: nowChrome,
+      date_last_used: '0',
+      guid: `00000000-0000-4000-8000-${String(idx + 10).padStart(12, '0')}`,
+      id: String(90010 + idx),
+      name: `🌐 ${cleanName}`,
+      type: 'url',
+      url: item.url,
     }
-  } else if (Array.isArray(bm.roots.bookmark_bar.children)) {
-    const children = bm.roots.bookmark_bar.children.filter((c: any) => c?.guid !== badgeNode.guid && c?.url !== homepageUrl)
-    const hasPing0 = children.some((c: any) => c?.guid === ping0Node.guid || String(c?.url || '').includes('ping0.cc'))
-    const hasGmail = children.some((c: any) => c?.guid === gmailNode.guid || String(c?.url || '').includes('mail.google.com') || String(c?.url || '').includes('gmail.com'))
-    const hasGoogle = children.some((c: any) => c?.guid === googleNode.guid || (String(c?.url || '').includes('google.com') && !String(c?.url || '').includes('mail.google.com')))
+  })
 
-    const defaultNodes = []
-    if (!hasGoogle) defaultNodes.push(googleNode)
-    if (!hasGmail) defaultNodes.push(gmailNode)
-    if (!hasPing0) defaultNodes.push(ping0Node)
+  // 2. 中间分列指示线（左侧公用与右侧专属的分界标记）
+  const dividerGuid = '00000000-0000-4000-8000-000000000099'
+  const dividerNode = {
+    date_added: nowChrome,
+    date_last_used: '0',
+    guid: dividerGuid,
+    id: '90099',
+    name: '︱👤 专属书签 ⇥',
+    type: 'url',
+    url: 'chrome://bookmarks/',
+  }
 
-    // Remove only our generated profile-home bookmark, preserving user bookmarks.
-    bm.roots.bookmark_bar.children = defaultNodes.length ? [...defaultNodes, ...children] : children
+  // 3. 提取右列：本号专属书签（用户在本环境内自行收藏的网页），过滤掉公用书签与历史旧标记
+  const rawChildren = Array.isArray(bm?.roots?.bookmark_bar?.children) ? bm.roots.bookmark_bar.children : []
+  const profileNodes = rawChildren.filter((c: any) => {
+    if (!c || c.type !== 'url' || !c.url) return false
+    if (c.guid === '00000000-0000-4000-8000-000000000001' || c.url === homepageUrl) return false
+    if (c.guid === dividerGuid || String(c.name || '').includes('专属书签')) return false
+    if (sharedUrls.has(c.url)) return false
+    return true
+  })
+
+  // 完美两列布局：[...公用书签, 分隔带, ...本号专属书签]，与合并视图完全对齐
+  bm = {
+    version: 1,
+    roots: {
+      bookmark_bar: {
+        children: [...sharedNodes, dividerNode, ...profileNodes],
+        date_added: nowChrome,
+        date_modified: nowChrome,
+        guid: '0bc5d13f-2cba-5d74-951f-3f233fe6c908',
+        id: '1',
+        name: 'Bookmarks bar',
+        type: 'folder',
+      },
+      other: bm?.roots?.other || { children: [], date_added: nowChrome, date_modified: '0', guid: '82b081ec-3dd3-529c-8475-ab6c344590dd', id: '2', name: 'Other bookmarks', type: 'folder' },
+      synced: bm?.roots?.synced || { children: [], date_added: nowChrome, date_modified: '0', guid: '4cf2e351-0e85-532b-bb37-df045d8f8d0f', id: '3', name: 'Mobile bookmarks', type: 'folder' },
+    },
   }
   await writeFile(bookmarksPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
 }

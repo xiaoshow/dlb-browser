@@ -1254,10 +1254,10 @@ export class GroupWorkspaceManager {
 
     let targetUrl = rawUrl.trim()
     if (!targetUrl) return
-    if (!/^https?:\/\//i.test(targetUrl) && !/^about:/i.test(targetUrl)) {
+    if (!/^https?:\/\//i.test(targetUrl) && !/^about:/i.test(targetUrl) && !/^chrome:\/\//i.test(targetUrl)) {
       if (targetUrl.startsWith('localhost') || targetUrl.startsWith('127.0.0.1') || /^[\w.-]+:\d+$/.test(targetUrl)) {
         targetUrl = 'http://' + targetUrl
-      } else if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
+      } else if (/^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/.*)?$/.test(targetUrl)) {
         targetUrl = 'https://' + targetUrl
       } else {
         targetUrl = 'https://www.google.com/search?q=' + encodeURIComponent(targetUrl)

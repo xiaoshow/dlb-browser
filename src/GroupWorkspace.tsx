@@ -958,6 +958,10 @@ export function GroupWorkspaceInner() {
               onContextMenu={(e) => handleShowBookmarkContextMenu(e, null, 'profile')}
               title={`专属收藏区：仅 #${activeTab.profileNumber} ${activeTab.profileName} 独享`}
             >
+              <div className="arc-bookmark-pill official-bookmark-pill arc-folder-item arc-profile-folder-item" title={`专属收藏区：仅 #${activeTab.profileNumber} ${activeTab.profileName} 独享`}>
+                <ChromeFolderIcon />
+                <span className="arc-bm-name">专属收藏</span>
+              </div>
               {profileBookmarks.length > 0 ? (
                 profileBookmarks.map((bm, idx) => {
                   const cleanName = bm.name.replace(/^[🌐\s]+/, '').trim() || bm.name
