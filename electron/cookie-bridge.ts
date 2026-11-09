@@ -306,8 +306,25 @@ export async function readSharedBookmarks(userDataDir: string, initialProfileIds
   }
 
   // 默认必须包含 Google 和 Gmail 官方书签
-  const hasGoogle = list.some(b => String(b.url).includes('google.com') && !String(b.url).includes('mail.google.com'))
-  const hasGmail = list.some(b => String(b.url).includes('mail.google.com') || String(b.url).includes('gmail.com'))
+  const isGoogleSearch = (url: string) => {
+    try {
+      const u = new URL(url)
+      return (u.hostname === 'www.google.com' || u.hostname === 'google.com') && (u.pathname === '/' || u.pathname === '')
+    } catch {
+      return false
+    }
+  }
+  const isGmail = (url: string) => {
+    try {
+      const u = new URL(url)
+      return u.hostname === 'mail.google.com' || u.hostname === 'gmail.com'
+    } catch {
+      return false
+    }
+  }
+
+  const hasGoogle = list.some(b => isGoogleSearch(b.url))
+  const hasGmail = list.some(b => isGmail(b.url))
   let needPersist = !fromFile
 
   if (!hasGoogle) {

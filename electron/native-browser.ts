@@ -260,10 +260,27 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   } catch {}
 
   // 兜底保障：公用区默认必须拥有 Google、Gmail 与 ip.ping0.cc
-  if (!sharedItems.some(b => String(b.url).includes('google.com') && !String(b.url).includes('mail.google.com'))) {
+  const isGoogleSearch = (url: string) => {
+    try {
+      const u = new URL(url)
+      return (u.hostname === 'www.google.com' || u.hostname === 'google.com') && (u.pathname === '/' || u.pathname === '')
+    } catch {
+      return false
+    }
+  }
+  const isGmail = (url: string) => {
+    try {
+      const u = new URL(url)
+      return u.hostname === 'mail.google.com' || u.hostname === 'gmail.com'
+    } catch {
+      return false
+    }
+  }
+
+  if (!sharedItems.some(b => isGoogleSearch(b.url))) {
     sharedItems.unshift({ id: 'default-google', name: 'Google', url: 'https://www.google.com/' })
   }
-  if (!sharedItems.some(b => String(b.url).includes('mail.google.com') || String(b.url).includes('gmail.com'))) {
+  if (!sharedItems.some(b => isGmail(b.url))) {
     sharedItems.splice(1, 0, { id: 'default-gmail', name: 'Gmail', url: 'https://mail.google.com/' })
   }
   if (!sharedItems.some(b => String(b.url).includes('ping0.cc'))) {
