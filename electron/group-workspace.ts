@@ -470,7 +470,12 @@ export class GroupWorkspaceManager {
       this.downloadConfiguredSessions.add(profile.id)
       ses.on('will-download', (_event, item) => {
         const downloadsPath = app.getPath('downloads')
-        const targetPath = join(downloadsPath, item.getFilename())
+        let filename = item.getFilename()
+        const mime = (item.getMimeType() || '').toLowerCase()
+        if ((mime === 'video/mp4' || mime.includes('mp4')) && !filename.toLowerCase().endsWith('.mp4')) {
+          filename += '.mp4'
+        }
+        const targetPath = join(downloadsPath, filename)
         item.setSavePath(targetPath)
       })
     }

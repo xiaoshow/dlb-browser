@@ -507,19 +507,8 @@ export class NativeBrowsers {
         running.lastPageTimer = setTimeout(() => { if (this.has(id) && pages.size === 0) void this.close(id).catch(() => undefined) }, 350)
       })
       await pipe.send('Target.setDiscoverTargets', { discover: true })
-      // 开启全局下载能力，默认保存至系统的 Downloads 目录，绝不拦截下载流
-      const downloadsPath = join(homedir(), 'Downloads')
-      await pipe.send('Browser.setDownloadBehavior', {
-        behavior: 'allowAndName',
-        downloadPath: downloadsPath,
-        eventsEnabled: true,
-      }).catch(() => {
-        return pipe.send('Browser.setDownloadBehavior', {
-          behavior: 'allow',
-          downloadPath: downloadsPath,
-          eventsEnabled: true,
-        }).catch(() => undefined)
-      })
+      // 下载行为严格回归原生 Chromium 默认机制：由 Preferences 控制保存至 Downloads 目录，绝不用 CDP allowAndName 强制覆盖为无后缀 GUID
+      await pipe.send('Browser.setDownloadBehavior', { behavior: 'default' }).catch(() => undefined)
 
       const initialized = new Set<string>()
       pipe.on('Target.targetDestroyed', ({ targetId }) => initialized.delete(targetId))
