@@ -306,9 +306,10 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
       date_last_used: '0',
       guid: `00000000-0000-4000-8000-${String(idx + 10).padStart(12, '0')}`,
       id: String(90010 + idx),
-      name: cleanName,
+      name: item.hideTitle ? '' : cleanName,
       type: 'url',
       url: item.url,
+      ...(item.hideTitle ? { hideTitle: true } : {}),
     }
   })
 
@@ -332,6 +333,11 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     if (c.guid === dividerGuid || String(c.name || '').includes('专属书签')) return false
     if (sharedUrls.has(c.url)) return false
     return true
+  }).map((c: any) => {
+    if (c.hideTitle) {
+      return { ...c, name: '' }
+    }
+    return c
   })
 
   // 完美两列布局：[...公用书签, 分隔带, ...本号专属书签]，与合并视图完全对齐
