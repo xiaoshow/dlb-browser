@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
-import { access, mkdir, readFile, writeFile, rename, rm, chmod } from 'node:fs/promises'
+import { access, mkdir, readFile, writeFile, rename, rm, chmod, copyFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ChromePipe } from './chrome-pipe.js'
@@ -284,7 +284,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     sharedItems.splice(1, 0, { id: 'default-gmail', name: 'Gmail', url: 'https://mail.google.com/' })
   }
   if (!sharedItems.some(b => String(b.url).includes('ping0.cc'))) {
-    sharedItems.push({ id: '90002', name: '🌐 ip.ping0.cc', url: 'https://ip.ping0.cc/' })
+    sharedItems.push({ id: '90002', name: 'ip.ping0.cc', url: 'https://ip.ping0.cc/' })
   }
 
   // 组装左列：公用书签节点
@@ -297,7 +297,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
       date_last_used: '0',
       guid: `00000000-0000-4000-8000-${String(idx + 10).padStart(12, '0')}`,
       id: String(90010 + idx),
-      name: `🌐 ${cleanName}`,
+      name: cleanName,
       type: 'url',
       url: item.url,
     }
@@ -310,7 +310,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     date_last_used: '0',
     guid: dividerGuid,
     id: '90099',
-    name: '︱👤 专属书签 ⇥',
+    name: '★ | 👤 专属书签 ➔',
     type: 'url',
     url: 'chrome://bookmarks/',
   }
@@ -343,6 +343,82 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     },
   }
   await writeFile(bookmarksPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
+}
+
+async function ensureProfileFavicons(defaultDir: string, resourcesPath: string, rootDir: string): Promise<void> {
+  const targetDb = join(defaultDir, 'Favicons')
+
+  // 查找母体图标库 (按资源目录、根目录、用户应用支持目录顺序回退)
+  const candidates = [
+    join(resourcesPath, 'native/master-favicons.sqlite'),
+    join(resourcesPath, 'master-favicons.sqlite'),
+    join(rootDir, 'master-favicons.sqlite'),
+    join(homedir(), 'Library/Application Support/prism-fingerprint-browser/master-favicons.sqlite'),
+  ]
+  let masterDb = ''
+  for (const c of candidates) {
+    try {
+      await access(c)
+      masterDb = c
+      break
+    } catch {}
+  }
+  if (!masterDb) return
+
+  // 1. 如果该环境尚未生成 Favicons 数据库，直接安全拷贝母体库
+  const exists = await access(targetDb).then(() => true).catch(() => false)
+  if (!exists) {
+    try {
+      await copyFile(masterDb, targetDb)
+    } catch (e) {
+      console.warn('[Prism] Failed to initialize profile favicons:', e)
+    }
+    return
+  }
+
+  // 2. 如果已经存在 Favicons 数据库，执行基于 SQLite 的幂等增量合并：
+  // 严格保留该环境已有的历史图标与浏览信息，仅增量补齐未包含的常用/公共站点 Favicon 实体缓存与 URL 映射
+  const mergeSql = `
+ATTACH DATABASE "${masterDb}" AS master;
+
+CREATE TEMP TABLE id_map AS
+SELECT m.id AS master_icon_id, t.id AS target_icon_id, m.url, m.icon_type
+FROM master.favicons m
+LEFT JOIN favicons t ON t.url = m.url;
+
+INSERT INTO favicons (url, icon_type)
+SELECT url, icon_type FROM id_map WHERE target_icon_id IS NULL;
+
+UPDATE id_map
+SET target_icon_id = (SELECT t.id FROM favicons t WHERE t.url = id_map.url)
+WHERE target_icon_id IS NULL;
+
+INSERT INTO favicon_bitmaps (icon_id, last_updated, image_data, width, height, last_requested)
+SELECT m_map.target_icon_id, b.last_updated, b.image_data, b.width, b.height, b.last_requested
+FROM master.favicon_bitmaps b
+JOIN id_map m_map ON m_map.master_icon_id = b.icon_id
+WHERE NOT EXISTS (
+    SELECT 1 FROM favicon_bitmaps tb WHERE tb.icon_id = m_map.target_icon_id
+);
+
+INSERT INTO icon_mapping (page_url, icon_id, page_url_type)
+SELECT m_im.page_url, m_map.target_icon_id, m_im.page_url_type
+FROM master.icon_mapping m_im
+JOIN id_map m_map ON m_map.master_icon_id = m_im.icon_id
+WHERE NOT EXISTS (
+    SELECT 1 FROM icon_mapping tim WHERE tim.page_url = m_im.page_url
+);
+
+INSERT OR IGNORE INTO meta (key, value) SELECT key, value FROM master.meta;
+`
+
+  await new Promise<void>((resolve) => {
+    const proc = spawn('/usr/bin/sqlite3', [targetDb], { stdio: ['pipe', 'ignore', 'ignore'] })
+    proc.stdin.write(mergeSql)
+    proc.stdin.end()
+    proc.on('close', () => resolve())
+    proc.on('error', () => resolve())
+  })
 }
 type Running = {
   child: ChildProcess;
@@ -417,6 +493,7 @@ export class NativeBrowsers {
     const homepage = join(directory, 'prism-start.html')
     const homepageUrl = pathToFileURL(homepage).href
     await ensureProfilePreferences(directory, profile, number, homepageUrl, proxy)
+    await ensureProfileFavicons(join(directory, 'Default'), this.resources, this.root)
     const args = [
       `--user-data-dir=${directory}`,
       '--remote-debugging-pipe',

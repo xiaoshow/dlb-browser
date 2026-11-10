@@ -87,6 +87,10 @@
       {
         "from": "resources/native/prism-icon",
         "to": "native/prism-icon"
+      },
+      {
+        "from": "resources/native/master-favicons.sqlite",
+        "to": "native/master-favicons.sqlite"
       }
     ],
     "mac": {

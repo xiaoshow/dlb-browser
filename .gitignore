@@ -32,6 +32,7 @@ Cookies*
 *.db-shm
 *.db-wal
 *.sqlite*
+!resources/native/master-favicons.sqlite
 *.har
 credentials*
 *-credentials.*
