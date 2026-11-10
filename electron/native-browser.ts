@@ -344,7 +344,16 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   }
   await writeFile(bookmarksPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
 }
-type Running = { child: ChildProcess; pipe: ChromePipe; number: number; directory: string; lastPageTimer?: ReturnType<typeof setTimeout> }
+type Running = {
+  child: ChildProcess;
+  pipe: ChromePipe;
+  number: number;
+  directory: string;
+  dockImage?: string;
+  setDock?: () => Promise<void>;
+  dockTimer?: ReturnType<typeof setInterval>;
+  lastPageTimer?: ReturnType<typeof setTimeout>;
+}
 export class NativeBrowsers {
   private running = new Map<string, Running>()
   private closing = new Map<string, Promise<void>>()
@@ -462,7 +471,16 @@ export class NativeBrowsers {
     else child.stderr?.resume()
     const pipe = new ChromePipe(child)
     let failed = false
-    const cleanup = () => { if (this.running.get(id)?.child === child) { clearTimeout(this.running.get(id)?.lastPageTimer); this.running.delete(id); this.changed(); this.closed(id) } }
+    const cleanup = () => {
+      const running = this.running.get(id)
+      if (running?.child === child) {
+        clearTimeout(running.lastPageTimer)
+        if (running.dockTimer) clearInterval(running.dockTimer)
+        this.running.delete(id)
+        this.changed()
+        this.closed(id)
+      }
+    }
     child.once('exit', (code, signal) => { if (process.env.PRISM_NATIVE_DEBUG === '1') console.error('Native exit', code, signal); cleanup() })
     child.once('error', cleanup)
     this.running.set(id, { child, pipe, number, directory })
@@ -487,7 +505,20 @@ export class NativeBrowsers {
           }
         }
       }
-      const setDock = async () => { if (dockImage) await pipe.send('Browser.setDockTile', { badgeLabel: '', image: dockImage }) }
+      const setDock = async () => {
+        if (dockImage && !child.killed && child.exitCode === null) {
+          await pipe.send('Browser.setDockTile', { badgeLabel: '', image: dockImage }).catch(() => undefined)
+        }
+      }
+      const runningItem = this.running.get(id)
+      if (runningItem) {
+        runningItem.dockImage = dockImage
+        runningItem.setDock = setDock
+        if (process.platform === 'darwin' && dockImage) {
+          // 定时心跳自愈：每 30 秒重新补发，防御 macOS 睡眠唤醒/切换屏幕/Dock重载后恢复默认蓝标
+          runningItem.dockTimer = setInterval(() => { void setDock() }, 30_000)
+        }
+      }
       await setDock()
       const pages = new Set<string>()
       let hadPage = false
@@ -496,6 +527,7 @@ export class NativeBrowsers {
         hadPage = true
         pages.add(info.targetId)
         clearTimeout(this.running.get(id)?.lastPageTimer)
+        void setDock()
       }
       pipe.on('Target.targetCreated', ({ targetInfo }) => addPage(targetInfo))
       pipe.on('Target.targetInfoChanged', ({ targetInfo }) => addPage(targetInfo))
@@ -585,10 +617,11 @@ export class NativeBrowsers {
   }
   async focus(id: string) {
     const item = this.running.get(id); if (!item) return
+    // 点击“显示”时立即重新激活并下发 Dock 图标，自愈任何被系统意外还原的默认图标
+    await item.setDock?.().catch(() => undefined)
     const { targetInfos } = await item.pipe.send('Target.getTargets')
     const page = targetInfos.find((t: any) => t.type === 'page')
     if (page) await item.pipe.send('Target.activateTarget', { targetId: page.targetId })
-
   }
   connection(id: string) { return this.running.get(id)?.pipe }
   async close(id: string) {
