@@ -420,6 +420,7 @@ export class NativeBrowsers {
     const args = [
       `--user-data-dir=${directory}`,
       '--remote-debugging-pipe',
+      '--disable-blink-features=AutomationControlled',
       '--no-first-run',
       '--no-default-browser-check',
       '--no-startup-window',
