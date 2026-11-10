@@ -226,9 +226,18 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   prefs.profile = {
     ...(prefs.profile || {}),
     name: profileDisplayName,
+    password_manager_enabled: true,
     // Do not synthesize legacy avatar resource IDs from the Profile number.
     // Chromium 148 aborts for the previously generated avatar 26.
     avatar_index: 0,
+  }
+  // 显式开启原生 Chromium 密码管理器与自动填充服务（保障登录时弹出保存密码提示与自动填充）
+  prefs.credentials_enable_service = true
+  prefs.credentials_enable_autosignin = true
+  prefs.autofill = {
+    ...(prefs.autofill || {}),
+    profile_enabled: true,
+    credit_card_enabled: true,
   }
   await writeFile(prefPath, JSON.stringify(prefs), { mode: 0o600 })
 
