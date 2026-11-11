@@ -102,7 +102,8 @@ export class GroupWorkspaceManager {
     private saveState: (state: any) => Promise<void> | void,
     private configureProxy: (ownerId: string, ses: Electron.Session, proxy: any) => Promise<string>,
     private getPreloadPath: () => string,
-    private getHtmlPath: (groupId: string) => { isUrl: boolean; path: string }
+    private getHtmlPath: (groupId: string) => { isUrl: boolean; path: string },
+    private onSharedBookmarksChanged?: (shared: BookmarkItem[]) => void
   ) {}
 
   getWorkspaceByWindow(win: BrowserWindow): WorkspaceSession | undefined {
@@ -172,6 +173,15 @@ export class GroupWorkspaceManager {
     if (!ws.win.isDestroyed()) {
       ws.win.webContents.send('workspace:state', this.getClientState(ws))
     }
+  }
+
+  broadcastAllWorkspaces() {
+    for (const ws of this.workspaces.values()) {
+      this.broadcastState(ws)
+    }
+    try {
+      this.onSharedBookmarksChanged?.(this.sharedBookmarks)
+    } catch {}
   }
 
   private updateBounds(ws: WorkspaceSession) {
@@ -915,7 +925,12 @@ export class GroupWorkspaceManager {
     return bms
   }
 
-
+  reloadSharedBookmarks(shared: BookmarkItem[]) {
+    this.sharedBookmarks = shared
+    for (const ws of this.workspaces.values()) {
+      this.broadcastState(ws)
+    }
+  }
 
   async addBookmark(
     groupId: string,
@@ -930,11 +945,12 @@ export class GroupWorkspaceManager {
       await addProfileBookmark(app.getPath('userData'), profileId, name, url, favicon)
       const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
       this.profileBookmarks.set(profileId, updated)
+      if (ws) this.broadcastState(ws)
     } else {
       const pids = ws ? Array.from(new Set(ws.tabs.map((t) => t.profileId))) : [profileId]
       this.sharedBookmarks = await addSharedBookmark(app.getPath('userData'), name, url, pids, favicon)
+      this.broadcastAllWorkspaces()
     }
-    if (ws) this.broadcastState(ws)
   }
 
   async removeBookmark(
@@ -948,11 +964,12 @@ export class GroupWorkspaceManager {
       await removeProfileBookmark(app.getPath('userData'), profileId, url)
       const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
       this.profileBookmarks.set(profileId, updated)
+      if (ws) this.broadcastState(ws)
     } else {
       const pids = ws ? Array.from(new Set(ws.tabs.map((t) => t.profileId))) : [profileId]
       this.sharedBookmarks = await removeSharedBookmark(app.getPath('userData'), url, pids)
+      this.broadcastAllWorkspaces()
     }
-    if (ws) this.broadcastState(ws)
   }
 
   async updateBookmark(
@@ -969,10 +986,11 @@ export class GroupWorkspaceManager {
       await updateProfileBookmark(app.getPath('userData'), profileId, oldUrl, newName, newUrl)
       const updated = await readProfileBookmarks(app.getPath('userData'), profileId)
       this.profileBookmarks.set(profileId, updated)
+      if (ws) this.broadcastState(ws)
     } else {
       this.sharedBookmarks = await updateSharedBookmark(app.getPath('userData'), oldUrl, newName, newUrl, favicon)
+      this.broadcastAllWorkspaces()
     }
-    if (ws) this.broadcastState(ws)
   }
 
   async moveBookmarkScope(
@@ -981,7 +999,6 @@ export class GroupWorkspaceManager {
     bookmark: BookmarkItem,
     targetScope: 'shared' | 'profile'
   ) {
-    const ws = this.workspaces.get(groupId)
     if (targetScope === 'shared') {
       if (profileId) {
         await removeProfileBookmark(app.getPath('userData'), profileId, bookmark.url)
@@ -1011,7 +1028,7 @@ export class GroupWorkspaceManager {
         this.profileBookmarks.set(profileId, updated)
       }
     }
-    if (ws) this.broadcastState(ws)
+    this.broadcastAllWorkspaces()
   }
 
   async reorderBookmarks(
@@ -1024,10 +1041,11 @@ export class GroupWorkspaceManager {
     if (scope === 'profile' && profileId) {
       await reorderProfileBookmarks(app.getPath('userData'), profileId, bookmarks)
       this.profileBookmarks.set(profileId, bookmarks)
+      if (ws) this.broadcastState(ws)
     } else {
       this.sharedBookmarks = await reorderSharedBookmarks(app.getPath('userData'), bookmarks)
+      this.broadcastAllWorkspaces()
     }
-    if (ws) this.broadcastState(ws)
   }
 
   async toggleBookmarkHideTitle(
@@ -1040,10 +1058,11 @@ export class GroupWorkspaceManager {
     if (scope === 'profile' && profileId) {
       const updated = await toggleProfileBookmarkHideTitle(app.getPath('userData'), profileId, url)
       this.profileBookmarks.set(profileId, updated)
+      if (ws) this.broadcastState(ws)
     } else {
       this.sharedBookmarks = await toggleSharedBookmarkHideTitle(app.getPath('userData'), url)
+      this.broadcastAllWorkspaces()
     }
-    if (ws) this.broadcastState(ws)
   }
 
   setModalActive(groupId: string, active: boolean) {

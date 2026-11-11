@@ -59,6 +59,7 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
     version: '1.0.0',
     description: 'Prism Profile Environment Badge',
     key: BADGE_EXTENSION_KEY,
+    permissions: ['bookmarks'],
     action: {
       default_title: badgeTitle,
       default_popup: 'popup.html'
@@ -73,6 +74,9 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
 const BADGE_TEXT = '#${number}';
 const BADGE_COLOR = '${color}';
 const BADGE_TITLE = ${JSON.stringify(badgeTitle)};
+const DIVIDER_TITLE = '★ | 👤 专属书签 ➔';
+const DIVIDER_URL = 'chrome://bookmarks/';
+let __prismSyncing = false;
 
 function applyBadge() {
   try {
@@ -80,6 +84,72 @@ function applyBadge() {
     chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR });
     chrome.action.setTitle({ title: BADGE_TITLE });
   } catch (e) {}
+}
+
+globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
+  if (!chrome.bookmarks || !Array.isArray(sharedItems)) return false;
+  __prismSyncing = true;
+  try {
+    const barChildren = await chrome.bookmarks.getChildren('1');
+    let divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && c.title.includes('专属书签')));
+    if (divIdx === -1) {
+      const created = await chrome.bookmarks.create({ parentId: '1', index: 0, title: DIVIDER_TITLE, url: DIVIDER_URL });
+      barChildren.unshift(created);
+      divIdx = 0;
+    }
+    const leftNodes = barChildren.slice(0, divIdx);
+    const sharedUrls = new Set(sharedItems.map(s => s.url));
+    for (const node of leftNodes) {
+      if (!sharedUrls.has(node.url)) {
+        await chrome.bookmarks.remove(node.id).catch(() => {});
+      }
+    }
+    for (let i = 0; i < sharedItems.length; i++) {
+      const item = sharedItems[i];
+      const desiredTitle = item.hideTitle ? '' : String(item.name || '').replace(/^[🌐\\s]+/, '').trim();
+      const currentChildren = await chrome.bookmarks.getChildren('1');
+      const curDivIdx = currentChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && c.title.includes('专属书签')));
+      const limit = curDivIdx === -1 ? currentChildren.length : curDivIdx;
+      const existing = currentChildren.slice(0, limit).find(c => c.url === item.url);
+      if (existing) {
+        if (existing.title !== desiredTitle) {
+          await chrome.bookmarks.update(existing.id, { title: desiredTitle }).catch(() => {});
+        }
+        if (existing.index !== i) {
+          await chrome.bookmarks.move(existing.id, { parentId: '1', index: i }).catch(() => {});
+        }
+      } else {
+        await chrome.bookmarks.create({ parentId: '1', index: i, title: desiredTitle, url: item.url }).catch(() => {});
+      }
+    }
+    return true;
+  } catch (e) {
+    return false;
+  } finally {
+    setTimeout(() => { __prismSyncing = false; }, 150);
+  }
+};
+
+async function notifyIfSharedChanged() {
+  if (__prismSyncing || !chrome.bookmarks) return;
+  try {
+    const barChildren = await chrome.bookmarks.getChildren('1');
+    const divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && c.title.includes('专属书签')));
+    if (divIdx <= 0) return;
+    const leftNodes = barChildren.slice(0, divIdx).filter(c => c.url && !c.url.startsWith('chrome://'));
+    console.info('__PRISM_SHARED_BOOKMARKS__' + JSON.stringify(leftNodes.map(c => ({
+      name: c.title || c.url,
+      url: c.url,
+      hideTitle: c.title === ''
+    }))));
+  } catch (e) {}
+}
+
+if (chrome.bookmarks) {
+  chrome.bookmarks.onCreated.addListener(() => { setTimeout(notifyIfSharedChanged, 80); });
+  chrome.bookmarks.onRemoved.addListener(() => { setTimeout(notifyIfSharedChanged, 80); });
+  chrome.bookmarks.onChanged.addListener(() => { setTimeout(notifyIfSharedChanged, 80); });
+  chrome.bookmarks.onMoved.addListener(() => { setTimeout(notifyIfSharedChanged, 80); });
 }
 
 chrome.runtime.onInstalled.addListener(applyBadge);
@@ -456,7 +526,7 @@ export class NativeBrowsers {
   private running = new Map<string, Running>()
   private closing = new Map<string, Promise<void>>()
   private opening = new Map<string, Promise<void>>()
-  constructor(private root: string, private resources: string, private changed: () => void, private closed: (id: string) => void) {}
+  constructor(private root: string, private resources: string, private changed: () => void, private closed: (id: string) => void, private onNativeSharedBookmarksChanged?: (shared: Array<{ id: string; name: string; url: string; hideTitle?: boolean }>) => void) {}
   get ids() { return [...this.running.keys()] }
   get size() { return this.running.size }
   has(id: string) { return this.running.has(id) }
@@ -653,12 +723,18 @@ export class NativeBrowsers {
           }
           initialized.add(event.targetInfo.targetId)
           const type = event.targetInfo.type
+          const url = event.targetInfo.url || ''
+          // 为内置徽章扩展的 Service Worker 开启轻量控制台监听，实时捕获用户在原生书签栏左区新增/修改的公共书签
+          if ((type === 'service_worker' || type === 'background_page') && url.includes(BADGE_EXTENSION_ID)) {
+            await pipe.send('Runtime.enable', {}, sid).catch(() => undefined)
+            await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
+            return
+          }
           // Native worker identity comes from process switches; resume immediately.
           if (isFingerprintKernel && ['worker', 'shared_worker', 'service_worker'].includes(type)) {
             await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
             return
           }
-          const url = event.targetInfo.url || ''
 
           if (type === 'page' && !/^chrome-extension:/.test(url)) {
             const command = (method: string, params: object) => pipe.send(method, params, sid).catch(() => undefined)
@@ -699,6 +775,12 @@ export class NativeBrowsers {
         }
       }
       pipe.on('Target.attachedToTarget', event => { void setup(event) })
+      pipe.on('Runtime.consoleAPICalled', (params: any) => {
+        const firstArg = params?.args?.[0]?.value
+        if (typeof firstArg === 'string' && firstArg.startsWith('__PRISM_SHARED_BOOKMARKS__')) {
+          void this.handleNativeSharedBookmarkChange(id, firstArg.slice('__PRISM_SHARED_BOOKMARKS__'.length))
+        }
+      })
       // 回归原生铁律：全局 autoAttach 设为 waitForDebuggerOnStart: false，所有新窗口和弹窗毫秒级原生直出
       await pipe.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true, filter: [{ type: 'tab', exclude: true }, { type: 'browser', exclude: true }, {}] })
       const homepage = join(directory, 'prism-start.html')
@@ -810,6 +892,61 @@ export class NativeBrowsers {
       await new Promise(resolve => setTimeout(resolve, 150))
     })
     return normalized.length
+  }
+  async syncSharedBookmarksLive(sharedItems: Array<{ name: string; url: string; hideTitle?: boolean }>, excludeProfileId?: string) {
+    const payload = JSON.stringify(sharedItems)
+    for (const [id, item] of this.running.entries()) {
+      if (id === excludeProfileId || this.closing.has(id) || item.child.killed || item.child.exitCode !== null) continue
+      try {
+        const { targetInfos } = await item.pipe.send('Target.getTargets')
+        const sw = (targetInfos || []).find((t: any) =>
+          (t.type === 'service_worker' || t.type === 'background_page') &&
+          String(t.url || '').includes(BADGE_EXTENSION_ID)
+        )
+        if (!sw?.targetId) continue
+        let sid = item.pipe.sessions.get(sw.targetId)
+        if (!sid) {
+          const attached = await item.pipe.send('Target.attachToTarget', { targetId: sw.targetId, flatten: true }).catch(() => undefined)
+          sid = attached?.sessionId
+        }
+        if (sid) {
+          await item.pipe.send('Runtime.evaluate', {
+            expression: `typeof __prismSyncSharedBookmarks === 'function' ? __prismSyncSharedBookmarks(${payload}) : false`,
+            awaitPromise: true,
+          }, sid).catch(() => undefined)
+        }
+      } catch {}
+    }
+  }
+  private async handleNativeSharedBookmarkChange(sourceProfileId: string, jsonStr: string) {
+    try {
+      const items = JSON.parse(jsonStr)
+      if (!Array.isArray(items) || !items.length) return
+      const sharedPath = join(this.root, 'workspace-shared-bookmarks.json')
+      let existing: Array<{ id: string; name: string; url: string; favicon?: string; hideTitle?: boolean }> = []
+      try {
+        const raw = await readFile(sharedPath, 'utf8')
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) existing = parsed
+      } catch {}
+      const byUrl = new Map(existing.map(x => [x.url, x]))
+      const updated = items.map((it: any, i: number) => {
+        const prev = byUrl.get(it.url)
+        const hideTitle = Boolean(it.hideTitle)
+        const name = hideTitle ? (prev?.name || it.url) : (String(it.name || '').trim() || prev?.name || it.url)
+        return {
+          id: prev?.id || `shared-${Date.now()}-${i}`,
+          name,
+          url: it.url,
+          ...(prev?.favicon ? { favicon: prev.favicon } : {}),
+          ...(hideTitle ? { hideTitle: true } : {}),
+        }
+      })
+      if (JSON.stringify(existing) === JSON.stringify(updated)) return
+      await writeFile(sharedPath, JSON.stringify(updated, null, 2), { mode: 0o600 })
+      await this.syncSharedBookmarksLive(updated, sourceProfileId)
+      this.onNativeSharedBookmarksChanged?.(updated)
+    } catch {}
   }
   async removeProfileData(id: string) {
     if (!safeId(id)) throw new Error('Profile ID 无效')

@@ -63,7 +63,10 @@ function nativeBrowsers() {
     app.getPath('userData'),
     app.isPackaged ? process.resourcesPath : join(dirname, '../resources'),
     notifyProfileRuntime,
-    id => stopXray(id)
+    id => stopXray(id),
+    shared => {
+      groupWorkspaceManager?.reloadSharedBookmarks(shared)
+    }
   )
 }
 
@@ -662,6 +665,9 @@ const groupWorkspaceManager = new GroupWorkspaceManager(
       return { isUrl: true, path: `${process.env.VITE_DEV_SERVER_URL}?mode=workspace&groupId=${encodeURIComponent(groupId)}` }
     }
     return { isUrl: false, path: join(dirname, '../dist/index.html') }
+  },
+  (shared) => {
+    void nativeBrowsers().syncSharedBookmarksLive(shared)
   }
 )
 
