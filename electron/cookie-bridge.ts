@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile, stat, readdir } from 'node:fs/promises'
 import crypto, { randomUUID } from 'node:crypto'
 import type { Session } from 'electron'
+import { extractSharedFromBookmarksJson } from './native-browser.js'
 
 const exec = promisify(execFile)
 
@@ -123,9 +124,11 @@ export function setupCookieSyncBack(_userDataDir: string, _profileId: string, _s
 export interface BookmarkItem {
   id?: string
   name: string
+  type?: 'url' | 'folder'
   url: string
   favicon?: string
   hideTitle?: boolean
+  children?: BookmarkItem[]
 }
 
 export async function readProfileBookmarks(userDataDir: string, profileId: string): Promise<BookmarkItem[]> {
@@ -316,12 +319,43 @@ export async function readSharedBookmarks(userDataDir: string, initialProfileIds
   const filePath = join(userDataDir, 'workspace-shared-bookmarks.json')
   let list: BookmarkItem[] = []
   let fromFile = false
+  let sharedMtime = 0
   try {
+    const st = await stat(filePath)
+    sharedMtime = st.mtimeMs
     const raw = await readFile(filePath, 'utf8')
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed)) {
       list = parsed
       fromFile = true
+    }
+  } catch {}
+
+  // 自动扫描原生 Profile 的 Default/Bookmarks，若发现更新的公用书签修改，立即合并同步
+  try {
+    const profilesRoot = join(userDataDir, 'native-profiles')
+    const pDirs = await readdir(profilesRoot).catch(() => [] as string[])
+    let newestBmMtime = sharedMtime
+    let newestExtracted: BookmarkItem[] | null = null
+    for (const pid of pDirs) {
+      const candidatePath = join(profilesRoot, pid, 'Default', 'Bookmarks')
+      try {
+        const st = await stat(candidatePath)
+        if (st.mtimeMs > newestBmMtime + 50) {
+          const candRaw = await readFile(candidatePath, 'utf8')
+          const candBm = JSON.parse(candRaw)
+          const extracted = extractSharedFromBookmarksJson(candBm, list as any)
+          if (extracted && extracted.length > 0 && JSON.stringify(extracted) !== JSON.stringify(list)) {
+            newestBmMtime = st.mtimeMs
+            newestExtracted = extracted
+          }
+        }
+      } catch {}
+    }
+    if (newestExtracted) {
+      list = newestExtracted
+      fromFile = true
+      await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 }).catch(() => {})
     }
   } catch {}
 
