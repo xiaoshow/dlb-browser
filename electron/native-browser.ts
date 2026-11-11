@@ -653,29 +653,31 @@ export class NativeBrowsers {
           }
           const url = event.targetInfo.url || ''
 
-          if (['page','iframe'].includes(type) && !/^chrome-extension:/.test(url)) {
+          if (type === 'page' && !/^chrome-extension:/.test(url)) {
             const command = (method: string, params: object) => pipe.send(method, params, sid).catch(() => undefined)
-            if (profile.timezone && profile.timezone !== 'local') await command('Emulation.setTimezoneOverride', { timezoneId: profile.timezone })
-            if (profile.locale) await command('Emulation.setLocaleOverride', { locale: profile.locale })
-            if (profile.userAgentMode === 'custom') await command('Emulation.setUserAgentOverride', { userAgent: profile.userAgent, ...(profile.locale ? { acceptLanguage: profile.locale } : {}) })
-            await command('Emulation.setHardwareConcurrencyOverride', { hardwareConcurrency: effectiveHC })
-            if (profile.fingerprint?.geolocation) await command('Emulation.setGeolocationOverride', profile.fingerprint.geolocation)
-            if (profile.resolution) await command('Emulation.setDeviceMetricsOverride', { ...profile.resolution, screenWidth: profile.resolution.width, screenHeight: profile.resolution.height, deviceScaleFactor: profile.fingerprint?.pixelRatio || 1, mobile: false })
-            const fp = profile.fingerprint || {}
-            const features = []
-            if (fp.colorScheme) features.push({ name: 'prefers-color-scheme', value: fp.colorScheme })
-            if (fp.reducedMotion) features.push({ name: 'prefers-reduced-motion', value: fp.reducedMotion })
-            if (features.length) await command('Emulation.setEmulatedMedia', { features })
-
-            // If using native C++ fingerprint kernel, Blink handles fingerprinting cleanly at the C++ layer.
-            // Do NOT inject observable JS Proxies (e.g. Function.prototype.toString hooks) that trigger Cloudflare Turnstile / Botguard.
             if (!isFingerprintKernel) {
+              if (profile.timezone && profile.timezone !== 'local') await command('Emulation.setTimezoneOverride', { timezoneId: profile.timezone })
+              if (profile.locale) await command('Emulation.setLocaleOverride', { locale: profile.locale })
+              if (profile.userAgentMode === 'custom') await command('Emulation.setUserAgentOverride', { userAgent: profile.userAgent, ...(profile.locale ? { acceptLanguage: profile.locale } : {}) })
+              await command('Emulation.setHardwareConcurrencyOverride', { hardwareConcurrency: effectiveHC })
+              if (profile.fingerprint?.geolocation) await command('Emulation.setGeolocationOverride', profile.fingerprint.geolocation)
+              if (profile.resolution) await command('Emulation.setDeviceMetricsOverride', { ...profile.resolution, screenWidth: profile.resolution.width, screenHeight: profile.resolution.height, deviceScaleFactor: profile.fingerprint?.pixelRatio || 1, mobile: false })
+              const fp = profile.fingerprint || {}
+              const features = []
+              if (fp.colorScheme) features.push({ name: 'prefers-color-scheme', value: fp.colorScheme })
+              if (fp.reducedMotion) features.push({ name: 'prefers-reduced-motion', value: fp.reducedMotion })
+              if (features.length) await command('Emulation.setEmulatedMedia', { features })
+
               await command('Page.enable', {})
               await command('Page.addScriptToEvaluateOnNewDocument', { source: `if (!/^(chrome|chrome-extension):$/.test(location.protocol)) { ${fingerprintSource(profile)} }` })
+            } else {
+              // C++ 指纹内核模式：基础指纹全部在 C++ Blink 进程层完成，绝不通过 CDP 重复注入 Emulation，彻底消除 BotGuard / reCAPTCHA 探测痕迹
+              if (profile.userAgentMode === 'custom') await command('Emulation.setUserAgentOverride', { userAgent: profile.userAgent, ...(profile.locale ? { acceptLanguage: profile.locale } : {}) })
+              if (profile.fingerprint?.geolocation) await command('Emulation.setGeolocationOverride', profile.fingerprint.geolocation)
             }
-            // 回归原生铁律：子窗口/弹窗绝对不开启 waitForDebuggerOnStart，绝不卡死在 about:blank
-            await command('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true, filter: [{ type: 'tab', exclude: true }, { type: 'browser', exclude: true }, {}] })
-          } else if (['worker', 'shared_worker', 'service_worker'].includes(type) && !/^chrome-extension:/.test(url)) {
+            // 回归原生铁律：仅自动挂载新开页面（page），绝不渗透/调试任何子 iframe（如 reCAPTCHA/Turnstile 验证码）
+            await command('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true, filter: [{ type: 'page' }] })
+          } else if (!isFingerprintKernel && ['worker', 'shared_worker', 'service_worker'].includes(type) && !/^chrome-extension:/.test(url)) {
             const command = (method: string, params: object) => pipe.send(method, params, sid).catch(() => undefined)
             if (profile.timezone && profile.timezone !== 'local') await command('Emulation.setTimezoneOverride', { timezoneId: profile.timezone })
             if (profile.locale) await command('Emulation.setLocaleOverride', { locale: profile.locale })
