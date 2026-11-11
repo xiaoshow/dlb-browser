@@ -119,33 +119,21 @@ function parseRawBookmarkNodeToShared(node: any, idx: number, prevByKey: Map<str
 export function extractSharedFromBookmarksJson(bm: any, existingShared: SharedBookmarkNode[] = []): SharedBookmarkNode[] | null {
   const barChildren = bm?.roots?.bookmark_bar?.children
   if (!Array.isArray(barChildren)) return null
-  const divIdx = barChildren.findIndex(isDividerNode)
-  if (divIdx === -1) return null
-  const divName = String(barChildren[divIdx]?.name || '')
-  // 新版分隔符包含「公用书签」或以「👤 / 🟢」开头，右侧是公用区；旧版「★ | 👤 专属书签 ➔」左侧是公用区
-  const isNewRightShared = divName.includes('公用书签') || divName.startsWith('👤') || divName.startsWith('🟢')
-  const rawSharedSlice = isNewRightShared ? barChildren.slice(divIdx + 1) : barChildren.slice(0, divIdx)
   const prevByKey = new Map<string, SharedBookmarkNode>()
   for (const item of existingShared) {
     prevByKey.set(item.type === 'folder' ? `folder:${item.name}` : `url:${item.url}`, item)
   }
+  const seenKeys = new Set<string>()
   const extracted: SharedBookmarkNode[] = []
-  for (let i = 0; i < rawSharedSlice.length; i++) {
-    const parsed = parseRawBookmarkNodeToShared(rawSharedSlice[i], i, prevByKey)
-    if (parsed) extracted.push(parsed)
-  }
-  // 同时检查书签栏左侧是否有任何文件夹（如果用户在分隔符左侧新建了「共享书签」等目录，也自动识别并纳入共享池）
-  if (isNewRightShared) {
-    const leftSlice = barChildren.slice(0, divIdx)
-    for (let i = 0; i < leftSlice.length; i++) {
-      const c = leftSlice[i]
-      if (c && (c.type === 'folder' || Array.isArray(c.children))) {
-        const parsed = parseRawBookmarkNodeToShared(c, extracted.length + i, prevByKey)
-        if (parsed && !extracted.some(e => e.type === 'folder' && e.name === parsed.name)) {
-          extracted.push(parsed)
-        }
-      }
-    }
+  for (let i = 0; i < barChildren.length; i++) {
+    const rawNode = barChildren[i]
+    if (!rawNode || isDividerNode(rawNode)) continue
+    const parsed = parseRawBookmarkNodeToShared(rawNode, i, prevByKey)
+    if (!parsed) continue
+    const k = parsed.type === 'folder' ? `folder:${parsed.name}` : `url:${parsed.url}`
+    if (seenKeys.has(k)) continue
+    seenKeys.add(k)
+    extracted.push(parsed)
   }
   return extracted.length ? extracted : null
 }
@@ -299,34 +287,57 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
   __prismSyncing = true;
   try {
     const barChildren = await chrome.bookmarks.getChildren('1');
-    let divIdx = barChildren.findIndex(isDivider);
-    if (divIdx === -1) {
-      const created = await chrome.bookmarks.create({ parentId: '1', index: 0, title: DIVIDER_TITLE, url: DIVIDER_URL });
-      barChildren.unshift(created);
-      divIdx = 0;
-    } else if (barChildren[divIdx].title !== DIVIDER_TITLE) {
-      await chrome.bookmarks.update(barChildren[divIdx].id, { title: DIVIDER_TITLE }).catch(() => {});
+    // 1. 确保第 0 位固定是当前环境的 🟢 #编号 名字 标识签，清理多余重复标识签
+    const divNodes = barChildren.filter(isDivider);
+    let mainDiv = divNodes[0];
+    for (let d = 1; d < divNodes.length; d++) {
+      await chrome.bookmarks.remove(divNodes[d].id).catch(() => {});
     }
-    const rightNodes = barChildren.slice(divIdx + 1);
-    const sharedUrls = new Set(sharedItems.filter(s => s.type !== 'folder' && !Array.isArray(s.children)).map(s => s.url));
-    const sharedFolders = new Set(sharedItems.filter(s => s.type === 'folder' || Array.isArray(s.children)).map(s => s.name));
-    for (const node of rightNodes) {
-      if (node.url) {
-        if (!sharedUrls.has(node.url)) await chrome.bookmarks.remove(node.id).catch(() => {});
-      } else {
-        if (!sharedFolders.has(node.title)) await chrome.bookmarks.removeTree(node.id).catch(() => {});
+    if (!mainDiv) {
+      mainDiv = await chrome.bookmarks.create({ parentId: '1', index: 0, title: DIVIDER_TITLE, url: DIVIDER_URL }).catch(() => null);
+    } else {
+      if (mainDiv.title !== DIVIDER_TITLE) {
+        await chrome.bookmarks.update(mainDiv.id, { title: DIVIDER_TITLE }).catch(() => {});
+      }
+      if (mainDiv.index !== 0) {
+        await chrome.bookmarks.move(mainDiv.id, { parentId: '1', index: 0 }).catch(() => {});
       }
     }
+
+    // 2. 清理所有不在 sharedItems 中的旧书签及重复项（全书签栏 100% 共享）
+    const afterDivChildren = await chrome.bookmarks.getChildren('1');
+    const sharedUrls = new Set(sharedItems.filter(s => s.type !== 'folder' && !Array.isArray(s.children)).map(s => s.url));
+    const sharedFolders = new Set(sharedItems.filter(s => s.type === 'folder' || Array.isArray(s.children)).map(s => s.name));
+    const seenUrls = new Set();
+    const seenFolders = new Set();
+    for (const node of afterDivChildren) {
+      if (isDivider(node)) continue;
+      if (node.url) {
+        if (!sharedUrls.has(node.url) || seenUrls.has(node.url)) {
+          await chrome.bookmarks.remove(node.id).catch(() => {});
+        } else {
+          seenUrls.add(node.url);
+        }
+      } else {
+        if (!sharedFolders.has(node.title) || seenFolders.has(node.title)) {
+          await chrome.bookmarks.removeTree(node.id).catch(() => {});
+        } else {
+          seenFolders.add(node.title);
+        }
+      }
+    }
+
+    // 3. 按 sharedItems 顺序依次对齐 index = 1..N
     for (let i = 0; i < sharedItems.length; i++) {
       const item = sharedItems[i];
       const isFolder = item.type === 'folder' || Array.isArray(item.children);
       const currentChildren = await chrome.bookmarks.getChildren('1');
       const curDivIdx = currentChildren.findIndex(isDivider);
       const baseIdx = (curDivIdx === -1 ? 0 : curDivIdx + 1) + i;
-      const rightSlice = currentChildren.slice(curDivIdx === -1 ? 0 : curDivIdx + 1);
+      const nonDivSlice = currentChildren.filter(c => !isDivider(c));
       if (isFolder) {
         const folderTitle = String(item.name || '文件夹').trim();
-        let existingFolder = rightSlice.find(c => !c.url && c.title === folderTitle);
+        let existingFolder = nonDivSlice.find(c => !c.url && c.title === folderTitle);
         if (!existingFolder) {
           existingFolder = await chrome.bookmarks.create({ parentId: '1', index: baseIdx, title: folderTitle }).catch(() => null);
         } else if (existingFolder.index !== baseIdx) {
@@ -337,7 +348,7 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
         }
       } else {
         const desiredTitle = item.hideTitle ? '' : String(item.name || '').replace(/^[🌐\\s]+/, '').trim();
-        const existing = rightSlice.find(c => c.url === item.url);
+        const existing = nonDivSlice.find(c => c.url === item.url);
         if (existing) {
           if (existing.title !== desiredTitle) {
             await chrome.bookmarks.update(existing.id, { title: desiredTitle }).catch(() => {});
@@ -360,8 +371,13 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
 
 function serializeTreeNodes(nodes) {
   const out = [];
+  const seen = new Set();
   for (const c of (nodes || [])) {
+    if (isDivider(c)) continue;
     if (c.children) {
+      const k = 'folder:' + (c.title || '文件夹');
+      if (seen.has(k)) continue;
+      seen.add(k);
       out.push({
         name: c.title || '文件夹',
         type: 'folder',
@@ -369,6 +385,9 @@ function serializeTreeNodes(nodes) {
         children: serializeTreeNodes(c.children)
       });
     } else if (c.url && !c.url.startsWith('chrome://') && !c.url.startsWith('file://')) {
+      const k = 'url:' + c.url;
+      if (seen.has(k)) continue;
+      seen.add(k);
       out.push({
         name: c.title || c.url,
         type: 'url',
@@ -385,9 +404,7 @@ async function notifyIfSharedChanged() {
   try {
     const subTree = await chrome.bookmarks.getSubTree('1');
     const barChildren = (subTree && subTree[0] && subTree[0].children) || [];
-    const divIdx = barChildren.findIndex(isDivider);
-    const rightNodes = divIdx >= 0 ? barChildren.slice(divIdx + 1) : barChildren;
-    const serialized = serializeTreeNodes(rightNodes);
+    const serialized = serializeTreeNodes(barChildren);
     if (!serialized.length) return;
     console.info('__PRISM_SHARED_BOOKMARKS__' + JSON.stringify(serialized));
   } catch (e) {}
@@ -464,6 +481,7 @@ applyBadge();
   <div class="row"><span class="label">代理节点</span><span class="val">${proxy?.name || '本机直连'}</span></div>
   <div class="row"><span class="label">环境时区</span><span class="val">${profile.timezone || '跟随系统'}</span></div>
   <div class="row"><span class="label">指纹内核</span><span class="val">Chromium 148</span></div>
+  <script src="background.js"></script>
 </body>
 </html>`
   await writeGenerated(join(extDir, 'popup.html'), popupHtml)
@@ -660,7 +678,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   collectSharedKeys(sharedItems, sharedUrls, sharedFolders)
   const sharedNodes = buildChromeSharedNodes(sharedItems, nowChrome, 90010)
 
-  // 2. 中间分列指示线（直接把当前环境的 #编号 和名字写在上面，既能一眼看清是哪个 Profile，又作为左侧专属与右侧公用的分界标记！）
+  // 2. 第 1 位固定为当前环境的 #编号 和名字标识签，后面全部是 100% 全员互通共享的书签与目录（彻底消除左右分列造成的重复或丢失）
   const dividerGuid = '00000000-0000-4000-8000-000000000099'
   const dividerNode = {
     date_added: nowChrome,
@@ -672,34 +690,12 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     url: 'chrome://bookmarks/',
   }
 
-  // 3. 提取本号专属书签（位于分隔线左侧），过滤掉公用书签与历史旧标记
-  const rawChildren = Array.isArray(bm?.roots?.bookmark_bar?.children) ? bm.roots.bookmark_bar.children : []
-  const oldDivIdx = rawChildren.findIndex(isDividerNode)
-  const oldDivName = oldDivIdx >= 0 ? String(rawChildren[oldDivIdx]?.name || '') : ''
-  const oldIsNewRightShared = oldDivIdx >= 0 && (oldDivName.includes('公用书签') || oldDivName.startsWith('👤') || oldDivName.startsWith('🟢'))
-  const candidateProfileSlice = oldDivIdx >= 0
-    ? (oldIsNewRightShared ? rawChildren.slice(0, oldDivIdx) : rawChildren.slice(oldDivIdx + 1))
-    : rawChildren
-
-  const profileNodes = candidateProfileSlice.filter((c: any) => {
-    if (!c || c.type !== 'url' || !c.url) return false
-    if (c.guid === '00000000-0000-4000-8000-000000000001' || c.url === homepageUrl || c.url.startsWith('file://') || c.url.startsWith('chrome://')) return false
-    if (isDividerNode(c)) return false
-    if (sharedUrls.has(c.url)) return false
-    return true
-  }).map((c: any) => {
-    if (c.hideTitle) {
-      return { ...c, name: '' }
-    }
-    return c
-  })
-
-  // 完美两列布局：[...本号专属书签, 分隔带, ...公用书签]，让地址栏点星号默认追加进公用书签！
+  // 统一全共享布局：[身份标识签, ...全局共享书签]，任何位置收藏、拖拽或新建文件夹均全员同步！
   bm = {
     version: 1,
     roots: {
       bookmark_bar: {
-        children: [...profileNodes, dividerNode, ...sharedNodes],
+        children: [dividerNode, ...sharedNodes],
         date_added: nowChrome,
         date_modified: nowChrome,
         guid: '0bc5d13f-2cba-5d74-951f-3f233fe6c908',
@@ -799,6 +795,7 @@ type Running = {
   dockTimer?: ReturnType<typeof setInterval>;
   bmWatchTimer?: ReturnType<typeof setInterval>;
   lastBmMtime?: number;
+  lastSyncedSignature?: string;
   lastPageTimer?: ReturnType<typeof setTimeout>;
 }
 export class NativeBrowsers {
@@ -937,10 +934,16 @@ export class NativeBrowsers {
     child.once('exit', (code, signal) => { if (process.env.PRISM_NATIVE_DEBUG === '1') console.error('Native exit', code, signal); cleanup() })
     child.once('error', cleanup)
     const initBmStat = await stat(join(directory, 'Default', 'Bookmarks')).catch(() => null)
+    let initSig = ''
+    try {
+      const initRaw = await readFile(join(this.root, 'workspace-shared-bookmarks.json'), 'utf8')
+      const initParsed = JSON.parse(initRaw)
+      if (Array.isArray(initParsed)) initSig = JSON.stringify(initParsed)
+    } catch {}
     const bmWatchTimer = setInterval(() => {
       void this.checkProfileBookmarksDisk(id, directory)
     }, 800)
-    this.running.set(id, { child, pipe, number, directory, bmWatchTimer, lastBmMtime: initBmStat?.mtimeMs || 0 })
+    this.running.set(id, { child, pipe, number, directory, bmWatchTimer, lastBmMtime: initBmStat?.mtimeMs || 0, lastSyncedSignature: initSig })
     try {
       const version = await pipe.send('Browser.getVersion')
       let dockImage: string | undefined
@@ -1198,7 +1201,13 @@ export class NativeBrowsers {
         if (Array.isArray(sParsed)) existing = sParsed
       } catch {}
       const extracted = extractSharedFromBookmarksJson(bm, existing)
-      if (extracted && extracted.length > 0 && JSON.stringify(extracted) !== JSON.stringify(existing)) {
+      if (!extracted || !extracted.length) return
+      const extractedSig = JSON.stringify(extracted)
+      const existingSig = JSON.stringify(existing)
+      // 关键防覆盖保护：如果该窗口磁盘刷出的书签与它自己上次同步的快照完全一样，说明用户并未在该窗口修改书签（仅仅是窗口退出或内部刷新），绝不反向覆盖其它窗口刚更新的全局库！
+      if (running?.lastSyncedSignature && extractedSig === running.lastSyncedSignature) return
+      if (extractedSig !== existingSig) {
+        if (running) running.lastSyncedSignature = extractedSig
         await this.applyUpdatedSharedBookmarks(id, extracted)
       }
     } catch {}
@@ -1219,33 +1228,40 @@ export class NativeBrowsers {
           const attached = await item.pipe.send('Target.attachToTarget', { targetId: sw.targetId, flatten: true }).catch(() => undefined)
           sid = attached?.sessionId
         }
+        let syncedOk = false
         if (sid) {
-          await item.pipe.send('Runtime.evaluate', {
+          const res = await item.pipe.send('Runtime.evaluate', {
             expression: `typeof __prismSyncSharedBookmarks === 'function' ? __prismSyncSharedBookmarks(${payload}) : false`,
             awaitPromise: true,
+            returnByValue: true,
           }, sid).catch(() => undefined)
-        } else {
-          // 如果 MV3 Service Worker 处于休眠，短暂通过隐藏扩展页唤醒一次并立即关闭
+          syncedOk = Boolean(res?.result?.value)
+        }
+        if (!syncedOk) {
+          // Chromium 148 在 --remote-debugging-pipe 下不暴露 service_worker target：
+          // 直接创建一个隐藏的 popup.html 扩展页（内部加载了 background.js），直接在其 sessionId 上调用 __prismSyncSharedBookmarks 并立即关闭！
           const extPageUrl = `chrome-extension://${BADGE_EXTENSION_ID}/popup.html`
           const created = await item.pipe.send('Target.createTarget', { url: extPageUrl, background: true }).catch(() => undefined)
           if (created?.targetId) {
-            await new Promise(r => setTimeout(r, 120))
-            const { targetInfos: afterTargets } = await item.pipe.send('Target.getTargets').catch(() => ({ targetInfos: [] }))
-            const wokeSw = (afterTargets || []).find((t: any) =>
-              (t.type === 'service_worker' || t.type === 'background_page') &&
-              String(t.url || '').includes(BADGE_EXTENSION_ID)
-            )
-            if (wokeSw?.targetId) {
-              const attached = await item.pipe.send('Target.attachToTarget', { targetId: wokeSw.targetId, flatten: true }).catch(() => undefined)
-              if (attached?.sessionId) {
-                await item.pipe.send('Runtime.evaluate', {
-                  expression: `typeof __prismSyncSharedBookmarks === 'function' ? __prismSyncSharedBookmarks(${payload}) : false`,
-                  awaitPromise: true,
-                }, attached.sessionId).catch(() => undefined)
-              }
+            await new Promise(r => setTimeout(r, 90))
+            let popupSid = item.pipe.sessions.get(created.targetId)
+            if (!popupSid) {
+              const attached = await item.pipe.send('Target.attachToTarget', { targetId: created.targetId, flatten: true }).catch(() => undefined)
+              popupSid = attached?.sessionId
+            }
+            if (popupSid) {
+              const evalRes = await item.pipe.send('Runtime.evaluate', {
+                expression: `typeof __prismSyncSharedBookmarks === 'function' ? __prismSyncSharedBookmarks(${payload}) : false`,
+                awaitPromise: true,
+                returnByValue: true,
+              }, popupSid).catch(() => undefined)
+              syncedOk = Boolean(evalRes?.result?.value)
             }
             await item.pipe.send('Target.closeTarget', { targetId: created.targetId }).catch(() => undefined)
           }
+        }
+        if (syncedOk) {
+          item.lastSyncedSignature = payload
         }
         // 更新目标运行窗口的 lastBmMtime，防止把我们刚同步写入的变更有误判成回环
         setTimeout(async () => {
@@ -1253,7 +1269,7 @@ export class NativeBrowsers {
           if (st && this.running.has(id)) {
             this.running.get(id)!.lastBmMtime = st.mtimeMs
           }
-        }, 400)
+        }, 450)
       } catch {}
     }
   }
@@ -1278,7 +1294,10 @@ export class NativeBrowsers {
         const parsed = parseRawBookmarkNodeToShared(items[i], i, prevByKey)
         if (parsed) updated.push(parsed)
       }
-      if (!updated.length || JSON.stringify(existing) === JSON.stringify(updated)) return
+      const updatedSig = JSON.stringify(updated)
+      if (!updated.length || JSON.stringify(existing) === updatedSig) return
+      const running = this.running.get(sourceProfileId)
+      if (running) running.lastSyncedSignature = updatedSig
       await this.applyUpdatedSharedBookmarks(sourceProfileId, updated)
     } catch {}
   }
@@ -1295,9 +1314,6 @@ export class NativeBrowsers {
       const profilesRoot = join(this.root, 'native-profiles')
       const dirs = await readdir(profilesRoot).catch(() => [] as string[])
       const nowChrome = String((BigInt(Date.now()) + 11644473600000n) * 1000n)
-      const sharedUrls = new Set<string>()
-      const sharedFolders = new Set<string>()
-      collectSharedKeys(updated, sharedUrls, sharedFolders)
       const dividerGuid = '00000000-0000-4000-8000-000000000099'
       const sharedNodes = buildChromeSharedNodes(updated, nowChrome, 90010)
       let profileById = new Map<string, any>()
@@ -1317,20 +1333,10 @@ export class NativeBrowsers {
           const rawChildren = Array.isArray(bm?.roots?.bookmark_bar?.children) ? bm.roots.bookmark_bar.children : []
           const oldDivIdx = rawChildren.findIndex(isDividerNode)
           const oldDivName = oldDivIdx >= 0 ? String(rawChildren[oldDivIdx]?.name || '') : ''
-          const oldIsNewRightShared = oldDivIdx >= 0 && (oldDivName.includes('公用书签') || oldDivName.startsWith('👤') || oldDivName.startsWith('🟢'))
-          const candidateProfileSlice = oldDivIdx >= 0
-            ? (oldIsNewRightShared ? rawChildren.slice(0, oldDivIdx) : rawChildren.slice(oldDivIdx + 1))
-            : rawChildren
-          const profileNodes = candidateProfileSlice.filter((c: any) => {
-            if (!c || c.type !== 'url' || !c.url || c.url.startsWith('file://') || c.url.startsWith('chrome://')) return false
-            if (isDividerNode(c)) return false
-            if (sharedUrls.has(c.url)) return false
-            return true
-          })
           const pInfo = profileById.get(pid)
           const divTitle = pInfo
             ? buildDividerTitle(pInfo.number || 0, pInfo)
-            : (oldDivName.startsWith('🟢') ? oldDivName : '👤 专属书签 ➔ | ★ 公用书签 ➔')
+            : (oldDivName.startsWith('🟢') ? oldDivName : '🟢 #0 Profile ｜ ★')
           const dividerNode = {
             date_added: nowChrome,
             date_last_used: '0',
@@ -1341,7 +1347,7 @@ export class NativeBrowsers {
             url: 'chrome://bookmarks/',
           }
           if (bm?.roots?.bookmark_bar) {
-            bm.roots.bookmark_bar.children = [...profileNodes, dividerNode, ...sharedNodes]
+            bm.roots.bookmark_bar.children = [dividerNode, ...sharedNodes]
             await writeFile(bmPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
           }
         } catch {}
