@@ -56,10 +56,21 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
   const manifest = {
     manifest_version: 3,
     name: `Prism #${number} · ${profile.name || 'Profile'}`,
-    version: '1.0.0',
+    version: '1.1.0',
     description: 'Prism Profile Environment Badge',
     key: BADGE_EXTENSION_KEY,
     permissions: ['bookmarks'],
+    chrome_settings_overrides: {
+      search_provider: {
+        name: 'Google',
+        keyword: 'google.com',
+        search_url: 'https://www.google.com/search?q={searchTerms}',
+        favicon_url: 'https://www.google.com/favicon.ico',
+        suggest_url: 'https://www.google.com/complete/search?client=chrome&q={searchTerms}',
+        encoding: 'UTF-8',
+        is_default: true
+      }
+    },
     action: {
       default_title: badgeTitle,
       default_popup: 'popup.html'
@@ -74,7 +85,7 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
 const BADGE_TEXT = '#${number}';
 const BADGE_COLOR = '${color}';
 const BADGE_TITLE = ${JSON.stringify(badgeTitle)};
-const DIVIDER_TITLE = '★ | 👤 专属书签 ➔';
+const DIVIDER_TITLE = '👤 专属书签 ➔ | ★ 公用书签 ➔';
 const DIVIDER_URL = 'chrome://bookmarks/';
 let __prismSyncing = false;
 
@@ -91,15 +102,17 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
   __prismSyncing = true;
   try {
     const barChildren = await chrome.bookmarks.getChildren('1');
-    let divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && c.title.includes('专属书签')));
+    let divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && (c.title.includes('专属书签') || c.title.includes('公用书签'))));
     if (divIdx === -1) {
       const created = await chrome.bookmarks.create({ parentId: '1', index: 0, title: DIVIDER_TITLE, url: DIVIDER_URL });
       barChildren.unshift(created);
       divIdx = 0;
+    } else if (barChildren[divIdx].title !== DIVIDER_TITLE) {
+      await chrome.bookmarks.update(barChildren[divIdx].id, { title: DIVIDER_TITLE }).catch(() => {});
     }
-    const leftNodes = barChildren.slice(0, divIdx);
+    const rightNodes = barChildren.slice(divIdx + 1);
     const sharedUrls = new Set(sharedItems.map(s => s.url));
-    for (const node of leftNodes) {
+    for (const node of rightNodes) {
       if (!sharedUrls.has(node.url)) {
         await chrome.bookmarks.remove(node.id).catch(() => {});
       }
@@ -108,18 +121,18 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
       const item = sharedItems[i];
       const desiredTitle = item.hideTitle ? '' : String(item.name || '').replace(/^[🌐\\s]+/, '').trim();
       const currentChildren = await chrome.bookmarks.getChildren('1');
-      const curDivIdx = currentChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && c.title.includes('专属书签')));
-      const limit = curDivIdx === -1 ? currentChildren.length : curDivIdx;
-      const existing = currentChildren.slice(0, limit).find(c => c.url === item.url);
+      const curDivIdx = currentChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && (c.title.includes('专属书签') || c.title.includes('公用书签'))));
+      const baseIdx = (curDivIdx === -1 ? 0 : curDivIdx + 1) + i;
+      const existing = currentChildren.slice(curDivIdx === -1 ? 0 : curDivIdx + 1).find(c => c.url === item.url);
       if (existing) {
         if (existing.title !== desiredTitle) {
           await chrome.bookmarks.update(existing.id, { title: desiredTitle }).catch(() => {});
         }
-        if (existing.index !== i) {
-          await chrome.bookmarks.move(existing.id, { parentId: '1', index: i }).catch(() => {});
+        if (existing.index !== baseIdx) {
+          await chrome.bookmarks.move(existing.id, { parentId: '1', index: baseIdx }).catch(() => {});
         }
       } else {
-        await chrome.bookmarks.create({ parentId: '1', index: i, title: desiredTitle, url: item.url }).catch(() => {});
+        await chrome.bookmarks.create({ parentId: '1', index: baseIdx, title: desiredTitle, url: item.url }).catch(() => {});
       }
     }
     return true;
@@ -134,10 +147,10 @@ async function notifyIfSharedChanged() {
   if (__prismSyncing || !chrome.bookmarks) return;
   try {
     const barChildren = await chrome.bookmarks.getChildren('1');
-    const divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && c.title.includes('专属书签')));
-    if (divIdx <= 0) return;
-    const leftNodes = barChildren.slice(0, divIdx).filter(c => c.url && !c.url.startsWith('chrome://'));
-    console.info('__PRISM_SHARED_BOOKMARKS__' + JSON.stringify(leftNodes.map(c => ({
+    const divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && (c.title.includes('专属书签') || c.title.includes('公用书签'))));
+    const rightNodes = (divIdx >= 0 ? barChildren.slice(divIdx + 1) : barChildren).filter(c => c.url && !c.url.startsWith('chrome://') && !c.url.startsWith('file://'));
+    if (!rightNodes.length) return;
+    console.info('__PRISM_SHARED_BOOKMARKS__' + JSON.stringify(rightNodes.map(c => ({
       name: c.title || c.url,
       url: c.url,
       hideTitle: c.title === ''
@@ -243,19 +256,23 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     show_search_tools: false,
   }
   // 注入官方 Google 默认搜索引擎，确保在原生 Chromium 地址栏打字直接回车调用 Google 搜索
+  const googleTemplateData = {
+    short_name: 'Google',
+    keyword: 'google.com',
+    url: 'https://www.google.com/search?q={searchTerms}',
+    suggestions_url: 'https://www.google.com/complete/search?client=chrome&q={searchTerms}',
+    favicon_url: 'https://www.google.com/favicon.ico',
+    input_encodings: ['UTF-8'],
+    safe_for_autoreplace: false,
+    is_active: 1,
+    prepopulate_id: 0,
+    date_created: '13350000000000000',
+    last_modified: '13350000000000000',
+    synced_guid: '485bf7d3-0215-45af-87dc-538868000099',
+  }
   prefs.default_search_provider_data = {
-    template_url_data: {
-      short_name: 'Google',
-      keyword: 'google.com',
-      url: 'https://www.google.com/search?q={searchTerms}',
-      suggestions_url: 'https://www.google.com/complete/search?client=chrome&q={searchTerms}',
-      favicon_url: 'https://www.google.com/favicon.ico',
-      safe_for_autoreplace: true,
-      is_active: 1,
-      date_created: '0',
-      last_modified: '0',
-      synced_guid: 'google_search_provider_default',
-    },
+    template_url_data: googleTemplateData,
+    mirrored_template_url_data: googleTemplateData,
   }
   prefs.countryid_at_install = 224
   prefs.extensions = {
@@ -390,24 +407,24 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     }
   })
 
-  // 2. 中间分列指示线（左侧公用与右侧专属的分界标记）
+  // 2. 中间分列指示线（左侧专属与右侧公用的分界标记，这样 Chrome 星号 ⌘D 默认追加在最末尾时直接落入公用区同步给所有号！）
   const dividerGuid = '00000000-0000-4000-8000-000000000099'
   const dividerNode = {
     date_added: nowChrome,
     date_last_used: '0',
     guid: dividerGuid,
     id: '90099',
-    name: '★ | 👤 专属书签 ➔',
+    name: '👤 专属书签 ➔ | ★ 公用书签 ➔',
     type: 'url',
     url: 'chrome://bookmarks/',
   }
 
-  // 3. 提取右列：本号专属书签（用户在本环境内自行收藏的网页），过滤掉公用书签与历史旧标记
+  // 3. 提取本号专属书签（位于分隔线左侧），过滤掉公用书签与历史旧标记
   const rawChildren = Array.isArray(bm?.roots?.bookmark_bar?.children) ? bm.roots.bookmark_bar.children : []
   const profileNodes = rawChildren.filter((c: any) => {
     if (!c || c.type !== 'url' || !c.url) return false
     if (c.guid === '00000000-0000-4000-8000-000000000001' || c.url === homepageUrl) return false
-    if (c.guid === dividerGuid || String(c.name || '').includes('专属书签')) return false
+    if (c.guid === dividerGuid || String(c.name || '').includes('专属书签') || String(c.name || '').includes('公用书签')) return false
     if (sharedUrls.has(c.url)) return false
     return true
   }).map((c: any) => {
@@ -417,12 +434,12 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     return c
   })
 
-  // 完美两列布局：[...公用书签, 分隔带, ...本号专属书签]，与合并视图完全对齐
+  // 完美两列布局：[...本号专属书签, 分隔带, ...公用书签]，让地址栏点星号默认追加进公用书签！
   bm = {
     version: 1,
     roots: {
       bookmark_bar: {
-        children: [...sharedNodes, dividerNode, ...profileNodes],
+        children: [...profileNodes, dividerNode, ...sharedNodes],
         date_added: nowChrome,
         date_modified: nowChrome,
         guid: '0bc5d13f-2cba-5d74-951f-3f233fe6c908',
@@ -946,6 +963,53 @@ export class NativeBrowsers {
       await writeFile(sharedPath, JSON.stringify(updated, null, 2), { mode: 0o600 })
       await this.syncSharedBookmarksLive(updated, sourceProfileId)
       this.onNativeSharedBookmarksChanged?.(updated)
+      // 同步落盘到其它未运行的 Profile 的 Default/Bookmarks，确保任意时刻一致
+      try {
+        const { readdir } = await import('node:fs/promises')
+        const profilesRoot = join(this.root, 'native-profiles')
+        const dirs = await readdir(profilesRoot).catch(() => [] as string[])
+        const nowChrome = String((BigInt(Date.now()) + 11644473600000n) * 1000n)
+        const sharedUrls = new Set(updated.map(u => u.url))
+        const dividerGuid = '00000000-0000-4000-8000-000000000099'
+        const sharedNodes = updated.map((item, idx) => ({
+          date_added: nowChrome,
+          date_last_used: '0',
+          guid: `00000000-0000-4000-8000-${String(idx + 10).padStart(12, '0')}`,
+          id: String(90010 + idx),
+          name: item.hideTitle ? '' : (item.name.replace(/^[🌐\s]+/, '').trim() || item.name),
+          type: 'url',
+          url: item.url,
+          ...(item.hideTitle ? { hideTitle: true } : {}),
+        }))
+        const dividerNode = {
+          date_added: nowChrome,
+          date_last_used: '0',
+          guid: dividerGuid,
+          id: '90099',
+          name: '👤 专属书签 ➔ | ★ 公用书签 ➔',
+          type: 'url',
+          url: 'chrome://bookmarks/',
+        }
+        for (const pid of dirs) {
+          if (pid === sourceProfileId || this.running.has(pid)) continue
+          const bmPath = join(profilesRoot, pid, 'Default', 'Bookmarks')
+          try {
+            const bmRaw = await readFile(bmPath, 'utf8')
+            const bm = JSON.parse(bmRaw)
+            const rawChildren = Array.isArray(bm?.roots?.bookmark_bar?.children) ? bm.roots.bookmark_bar.children : []
+            const profileNodes = rawChildren.filter((c: any) => {
+              if (!c || c.type !== 'url' || !c.url || c.url.startsWith('file://') || c.url.startsWith('chrome://')) return false
+              if (c.guid === dividerGuid || String(c.name || '').includes('专属书签') || String(c.name || '').includes('公用书签')) return false
+              if (sharedUrls.has(c.url)) return false
+              return true
+            })
+            if (bm?.roots?.bookmark_bar) {
+              bm.roots.bookmark_bar.children = [...profileNodes, dividerNode, ...sharedNodes]
+              await writeFile(bmPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
+            }
+          } catch {}
+        }
+      } catch {}
     } catch {}
   }
   async removeProfileData(id: string) {

@@ -131,17 +131,40 @@ export interface BookmarkItem {
 export async function readProfileBookmarks(userDataDir: string, profileId: string): Promise<BookmarkItem[]> {
   const filePath = join(userDataDir, 'native-profiles', profileId, 'Default', 'Bookmarks')
   try {
+    let sharedUrls = new Set<string>()
+    try {
+      const sRaw = await readFile(join(userDataDir, 'workspace-shared-bookmarks.json'), 'utf8')
+      const sParsed = JSON.parse(sRaw)
+      if (Array.isArray(sParsed)) {
+        for (const item of sParsed) if (item?.url) sharedUrls.add(item.url)
+      }
+    } catch {}
     const raw = await readFile(filePath, 'utf8')
     const data = JSON.parse(raw)
-    const children = data?.roots?.bookmark_bar?.children || []
-    return children
-      .filter((c: any) => c && c.type === 'url' && c.url && !c.url.startsWith('file://'))
+    const children: any[] = data?.roots?.bookmark_bar?.children || []
+    const divIdx = children.findIndex((c: any) =>
+      c?.url === 'chrome://bookmarks/' ||
+      c?.guid === '00000000-0000-4000-8000-000000000099' ||
+      String(c?.name || '').includes('专属书签') ||
+      String(c?.name || '').includes('公用书签')
+    )
+    const isNewRightShared = divIdx >= 0 && String(children[divIdx]?.name || '').includes('公用书签')
+    const slice = divIdx >= 0
+      ? (isNewRightShared ? children.slice(0, divIdx) : children.slice(divIdx + 1))
+      : children
+    return slice
+      .filter((c: any) => {
+        if (!c || c.type !== 'url' || !c.url || c.url.startsWith('file://') || c.url.startsWith('chrome://')) return false
+        if (String(c.name || '').includes('专属书签') || String(c.name || '').includes('公用书签')) return false
+        if (sharedUrls.has(c.url)) return false
+        return true
+      })
       .map((c: any) => ({
         id: c.id || c.guid,
         name: c.name || c.url,
         url: c.url,
         favicon: c.favicon || undefined,
-        hideTitle: Boolean(c.hideTitle),
+        hideTitle: Boolean(c.hideTitle) || c.name === '',
       }))
   } catch {
     return []
@@ -171,7 +194,7 @@ export async function addProfileBookmark(
     }
     const target = data.roots.bookmark_bar.children.find((c: any) => c?.url === url)
     if (!target) {
-      data.roots.bookmark_bar.children.push({
+      const newItem = {
         date_added: String((Date.now() + 11644473600000) * 1000),
         guid: randomUUID(),
         id: String(Date.now()),
@@ -180,7 +203,18 @@ export async function addProfileBookmark(
         url,
         favicon: favicon || undefined,
         ...(hideTitle !== undefined ? { hideTitle: Boolean(hideTitle) } : {}),
-      })
+      }
+      const divIdx = data.roots.bookmark_bar.children.findIndex((c: any) =>
+        c?.url === 'chrome://bookmarks/' ||
+        c?.guid === '00000000-0000-4000-8000-000000000099' ||
+        String(c?.name || '').includes('专属书签') ||
+        String(c?.name || '').includes('公用书签')
+      )
+      if (divIdx >= 0 && String(data.roots.bookmark_bar.children[divIdx]?.name || '').includes('公用书签')) {
+        data.roots.bookmark_bar.children.splice(divIdx, 0, newItem)
+      } else {
+        data.roots.bookmark_bar.children.push(newItem)
+      }
       await writeFile(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
     } else if (favicon && !target.favicon) {
       target.favicon = favicon
@@ -375,11 +409,8 @@ export async function addSharedBookmark(
     await writeFile(filePath, JSON.stringify(list, null, 2), { mode: 0o600 })
   }
 
-  // 镜像同步写入各选中的 Profile 自身，确保单独启动时也有此书签
-  for (const pid of mirrorToProfileIds) {
-    await addProfileBookmark(userDataDir, pid, name, url, favicon, hideTitle).catch(() => undefined)
-  }
-
+  // 注意：公用书签统一保存在 workspace-shared-bookmarks.json，启动独立窗口时自动注入分隔符左侧；
+  // 绝不混入 addProfileBookmark，以免把公用书签污染进单个环境的右侧「专属书签」区
   return list
 }
 

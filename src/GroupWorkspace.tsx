@@ -416,16 +416,16 @@ export function GroupWorkspaceInner() {
 
   function handleToggleBookmark() {
     if (!activeTab || !activeTab.url || activeTab.url === 'about:blank') return
-    if (isBookmarkedInProfile) {
-      void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, activeTab.url, 'profile')
-    } else if (isBookmarkedInShared) {
+    if (isBookmarkedInShared) {
       void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, activeTab.url, 'shared')
+    } else if (isBookmarkedInProfile) {
+      void window.profileBrowser?.workspaceRemoveBookmark(activeTab.profileId, activeTab.url, 'profile')
     } else {
       void window.profileBrowser?.workspaceAddBookmark(
         activeTab.profileId,
         activeTab.title || activeTab.url,
         activeTab.url,
-        'profile',
+        'shared',
         activeTab.favicon
       )
     }
