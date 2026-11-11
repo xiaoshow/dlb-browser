@@ -149,16 +149,19 @@ export async function readProfileBookmarks(userDataDir: string, profileId: strin
       c?.url === 'chrome://bookmarks/' ||
       c?.guid === '00000000-0000-4000-8000-000000000099' ||
       String(c?.name || '').includes('专属书签') ||
-      String(c?.name || '').includes('公用书签')
+      String(c?.name || '').includes('公用书签') ||
+      /^🟢\s*#\d+/.test(String(c?.name || ''))
     )
-    const isNewRightShared = divIdx >= 0 && String(children[divIdx]?.name || '').includes('公用书签')
+    const divName = divIdx >= 0 ? String(children[divIdx]?.name || '') : ''
+    const isNewRightShared = divIdx >= 0 && (divName.includes('公用书签') || divName.startsWith('👤') || divName.startsWith('🟢'))
     const slice = divIdx >= 0
       ? (isNewRightShared ? children.slice(0, divIdx) : children.slice(divIdx + 1))
       : children
     return slice
       .filter((c: any) => {
         if (!c || c.type !== 'url' || !c.url || c.url.startsWith('file://') || c.url.startsWith('chrome://')) return false
-        if (String(c.name || '').includes('专属书签') || String(c.name || '').includes('公用书签')) return false
+        const n = String(c.name || '')
+        if (n.includes('专属书签') || n.includes('公用书签') || /^🟢\s*#\d+/.test(n)) return false
         if (sharedUrls.has(c.url)) return false
         return true
       })
@@ -211,9 +214,11 @@ export async function addProfileBookmark(
         c?.url === 'chrome://bookmarks/' ||
         c?.guid === '00000000-0000-4000-8000-000000000099' ||
         String(c?.name || '').includes('专属书签') ||
-        String(c?.name || '').includes('公用书签')
+        String(c?.name || '').includes('公用书签') ||
+        /^🟢\s*#\d+/.test(String(c?.name || ''))
       )
-      if (divIdx >= 0 && String(data.roots.bookmark_bar.children[divIdx]?.name || '').includes('公用书签')) {
+      const divName = divIdx >= 0 ? String(data.roots.bookmark_bar.children[divIdx]?.name || '') : ''
+      if (divIdx >= 0 && (divName.includes('公用书签') || divName.startsWith('👤') || divName.startsWith('🟢'))) {
         data.roots.bookmark_bar.children.splice(divIdx, 0, newItem)
       } else {
         data.roots.bookmark_bar.children.push(newItem)

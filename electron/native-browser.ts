@@ -56,12 +56,22 @@ export interface SharedBookmarkNode {
 
 function isDividerNode(c: any): boolean {
   if (!c) return false
+  const title = String(c.name || c.title || '')
   return (
     c.url === 'chrome://bookmarks/' ||
     c.guid === '00000000-0000-4000-8000-000000000099' ||
-    String(c.name || c.title || '').includes('专属书签') ||
-    String(c.name || c.title || '').includes('公用书签')
+    title.includes('专属书签') ||
+    title.includes('公用书签') ||
+    /^🟢\s*#\d+/.test(title)
   )
+}
+
+function buildDividerTitle(number: number, profile?: any): string {
+  const rawName = String(profile?.name || '').trim()
+  const shortName = rawName.replace(/@gmail\.com$/i, '').replace(/@googlemail\.com$/i, '').trim()
+  const tags = [...new Set((profile?.alias || profile?.notes || '').split(/[,，]/).map((t: string) => t.trim()).filter(Boolean))]
+  const label = shortName || tags[0] || 'Profile'
+  return `🟢 #${number} ${label} ｜ ★`
 }
 
 function parseRawBookmarkNodeToShared(node: any, idx: number, prevByKey: Map<string, SharedBookmarkNode>): SharedBookmarkNode | null {
@@ -112,8 +122,8 @@ export function extractSharedFromBookmarksJson(bm: any, existingShared: SharedBo
   const divIdx = barChildren.findIndex(isDividerNode)
   if (divIdx === -1) return null
   const divName = String(barChildren[divIdx]?.name || '')
-  // 新版分隔符包含「公用书签」，右侧是公用区；旧版「★ | 👤 专属书签 ➔」左侧是公用区
-  const isNewRightShared = divName.includes('公用书签') || divName.startsWith('👤')
+  // 新版分隔符包含「公用书签」或以「👤 / 🟢」开头，右侧是公用区；旧版「★ | 👤 专属书签 ➔」左侧是公用区
+  const isNewRightShared = divName.includes('公用书签') || divName.startsWith('👤') || divName.startsWith('🟢')
   const rawSharedSlice = isNewRightShared ? barChildren.slice(divIdx + 1) : barChildren.slice(0, divIdx)
   const prevByKey = new Map<string, SharedBookmarkNode>()
   for (const item of existingShared) {
@@ -218,13 +228,20 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
   }
   await writeGenerated(join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
 
+  const dividerTitle = buildDividerTitle(number, profile)
   const bg = `
 const BADGE_TEXT = '#${number}';
 const BADGE_COLOR = '${color}';
 const BADGE_TITLE = ${JSON.stringify(badgeTitle)};
-const DIVIDER_TITLE = '👤 专属书签 ➔ | ★ 公用书签 ➔';
+const DIVIDER_TITLE = ${JSON.stringify(dividerTitle)};
 const DIVIDER_URL = 'chrome://bookmarks/';
 let __prismSyncing = false;
+
+function isDivider(c) {
+  if (!c) return false;
+  const t = String(c.title || '');
+  return c.url === DIVIDER_URL || t.includes('专属书签') || t.includes('公用书签') || /^🟢\\s*#\\d+/.test(t);
+}
 
 function applyBadge() {
   try {
@@ -282,7 +299,7 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
   __prismSyncing = true;
   try {
     const barChildren = await chrome.bookmarks.getChildren('1');
-    let divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && (c.title.includes('专属书签') || c.title.includes('公用书签'))));
+    let divIdx = barChildren.findIndex(isDivider);
     if (divIdx === -1) {
       const created = await chrome.bookmarks.create({ parentId: '1', index: 0, title: DIVIDER_TITLE, url: DIVIDER_URL });
       barChildren.unshift(created);
@@ -304,7 +321,7 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
       const item = sharedItems[i];
       const isFolder = item.type === 'folder' || Array.isArray(item.children);
       const currentChildren = await chrome.bookmarks.getChildren('1');
-      const curDivIdx = currentChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && (c.title.includes('专属书签') || c.title.includes('公用书签'))));
+      const curDivIdx = currentChildren.findIndex(isDivider);
       const baseIdx = (curDivIdx === -1 ? 0 : curDivIdx + 1) + i;
       const rightSlice = currentChildren.slice(curDivIdx === -1 ? 0 : curDivIdx + 1);
       if (isFolder) {
@@ -368,7 +385,7 @@ async function notifyIfSharedChanged() {
   try {
     const subTree = await chrome.bookmarks.getSubTree('1');
     const barChildren = (subTree && subTree[0] && subTree[0].children) || [];
-    const divIdx = barChildren.findIndex(c => c.url === DIVIDER_URL || (c.title && (c.title.includes('专属书签') || c.title.includes('公用书签'))));
+    const divIdx = barChildren.findIndex(isDivider);
     const rightNodes = divIdx >= 0 ? barChildren.slice(divIdx + 1) : barChildren;
     const serialized = serializeTreeNodes(rightNodes);
     if (!serialized.length) return;
@@ -643,14 +660,14 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   collectSharedKeys(sharedItems, sharedUrls, sharedFolders)
   const sharedNodes = buildChromeSharedNodes(sharedItems, nowChrome, 90010)
 
-  // 2. 中间分列指示线（左侧专属与右侧公用的分界标记，这样 Chrome 星号 ⌘D 默认追加在最末尾时直接落入公用区同步给所有号！）
+  // 2. 中间分列指示线（直接把当前环境的 #编号 和名字写在上面，既能一眼看清是哪个 Profile，又作为左侧专属与右侧公用的分界标记！）
   const dividerGuid = '00000000-0000-4000-8000-000000000099'
   const dividerNode = {
     date_added: nowChrome,
     date_last_used: '0',
     guid: dividerGuid,
     id: '90099',
-    name: '👤 专属书签 ➔ | ★ 公用书签 ➔',
+    name: buildDividerTitle(number, profile),
     type: 'url',
     url: 'chrome://bookmarks/',
   }
@@ -658,7 +675,8 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
   // 3. 提取本号专属书签（位于分隔线左侧），过滤掉公用书签与历史旧标记
   const rawChildren = Array.isArray(bm?.roots?.bookmark_bar?.children) ? bm.roots.bookmark_bar.children : []
   const oldDivIdx = rawChildren.findIndex(isDividerNode)
-  const oldIsNewRightShared = oldDivIdx >= 0 && (String(rawChildren[oldDivIdx]?.name || '').includes('公用书签') || String(rawChildren[oldDivIdx]?.name || '').startsWith('👤'))
+  const oldDivName = oldDivIdx >= 0 ? String(rawChildren[oldDivIdx]?.name || '') : ''
+  const oldIsNewRightShared = oldDivIdx >= 0 && (oldDivName.includes('公用书签') || oldDivName.startsWith('👤') || oldDivName.startsWith('🟢'))
   const candidateProfileSlice = oldDivIdx >= 0
     ? (oldIsNewRightShared ? rawChildren.slice(0, oldDivIdx) : rawChildren.slice(oldDivIdx + 1))
     : rawChildren
@@ -1282,15 +1300,14 @@ export class NativeBrowsers {
       collectSharedKeys(updated, sharedUrls, sharedFolders)
       const dividerGuid = '00000000-0000-4000-8000-000000000099'
       const sharedNodes = buildChromeSharedNodes(updated, nowChrome, 90010)
-      const dividerNode = {
-        date_added: nowChrome,
-        date_last_used: '0',
-        guid: dividerGuid,
-        id: '90099',
-        name: '👤 专属书签 ➔ | ★ 公用书签 ➔',
-        type: 'url',
-        url: 'chrome://bookmarks/',
-      }
+      let profileById = new Map<string, any>()
+      try {
+        const wsRaw = await readFile(join(this.root, 'workspace.json'), 'utf8')
+        const wsData = JSON.parse(wsRaw)
+        for (const p of (wsData?.profiles || [])) {
+          if (p?.id) profileById.set(p.id, p)
+        }
+      } catch {}
       for (const pid of dirs) {
         if (pid === sourceProfileId || this.running.has(pid)) continue
         const bmPath = join(profilesRoot, pid, 'Default', 'Bookmarks')
@@ -1299,7 +1316,8 @@ export class NativeBrowsers {
           const bm = JSON.parse(bmRaw)
           const rawChildren = Array.isArray(bm?.roots?.bookmark_bar?.children) ? bm.roots.bookmark_bar.children : []
           const oldDivIdx = rawChildren.findIndex(isDividerNode)
-          const oldIsNewRightShared = oldDivIdx >= 0 && (String(rawChildren[oldDivIdx]?.name || '').includes('公用书签') || String(rawChildren[oldDivIdx]?.name || '').startsWith('👤'))
+          const oldDivName = oldDivIdx >= 0 ? String(rawChildren[oldDivIdx]?.name || '') : ''
+          const oldIsNewRightShared = oldDivIdx >= 0 && (oldDivName.includes('公用书签') || oldDivName.startsWith('👤') || oldDivName.startsWith('🟢'))
           const candidateProfileSlice = oldDivIdx >= 0
             ? (oldIsNewRightShared ? rawChildren.slice(0, oldDivIdx) : rawChildren.slice(oldDivIdx + 1))
             : rawChildren
@@ -1309,6 +1327,19 @@ export class NativeBrowsers {
             if (sharedUrls.has(c.url)) return false
             return true
           })
+          const pInfo = profileById.get(pid)
+          const divTitle = pInfo
+            ? buildDividerTitle(pInfo.number || 0, pInfo)
+            : (oldDivName.startsWith('🟢') ? oldDivName : '👤 专属书签 ➔ | ★ 公用书签 ➔')
+          const dividerNode = {
+            date_added: nowChrome,
+            date_last_used: '0',
+            guid: dividerGuid,
+            id: '90099',
+            name: divTitle,
+            type: 'url',
+            url: 'chrome://bookmarks/',
+          }
           if (bm?.roots?.bookmark_bar) {
             bm.roots.bookmark_bar.children = [...profileNodes, dividerNode, ...sharedNodes]
             await writeFile(bmPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
