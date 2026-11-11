@@ -541,9 +541,9 @@ export class NativeBrowsers {
       }
       if (profile.fingerprint?.pixelRatio) args.push(`--fingerprint-device-scale-factor=${profile.fingerprint.pixelRatio}`)
       const disabled: string[] = []
-      if (profile.fingerprint?.canvas === 'real') disabled.push('canvas')
-      if (profile.fingerprint?.audio === 'real') disabled.push('audio')
-      if (profile.fingerprint?.webGL === 'real') disabled.push('gpu')
+      if (profile.fingerprint?.canvas !== 'noise') disabled.push('canvas')
+      if (profile.fingerprint?.audio !== 'noise') disabled.push('audio')
+      if (profile.fingerprint?.webGL !== 'noise') disabled.push('gpu')
       if (disabled.length) args.push(`--disable-spoofing=${disabled.join(',')}`)
     }
     if (profile.locale) args.push(`--lang=${profile.locale}`, `--accept-lang=${profile.locale}`)
