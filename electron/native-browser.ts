@@ -239,6 +239,13 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     profile_enabled: true,
     credit_card_enabled: true,
   }
+  // 在 Preferences 层真正锁死 WebRTC 非代理 UDP 防漏（现代 Chromium 仅读取此项，避免进程参数暴露或失效）
+  if (profile.webRTCPolicy === 'proxy-only') {
+    prefs.webrtc = {
+      ...(prefs.webrtc || {}),
+      ip_handling_policy: 'disable_non_proxied_udp',
+    }
+  }
   await writeFile(prefPath, JSON.stringify(prefs), { mode: 0o600 })
 
   const localStatePath = join(directory, 'Local State')
@@ -518,8 +525,8 @@ export class NativeBrowsers {
       '--no-startup-window',
       '--disable-background-mode',
       '--disable-background-networking',
-      '--disable-component-update',
       '--disable-domain-reliability',
+      '--disable-field-trial-config',
       '--disable-sync',
       '--media-router=0',
       '--disk-cache-size=104857600',

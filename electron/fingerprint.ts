@@ -87,17 +87,48 @@ function install(o) {
         });
     }
     if (o.canvas === 'noise') {
-        const perturb = (data) => {
-            for (let i = 0; i < data.length; i += 4)
-                if (data[i + 3])
-                    data[i] = Math.min(255, Math.max(0, data[i] + (noise(i) > 0 ? 1 : -1)));
+        // Fury-style edge-only anti-detection perturbation:
+        // Flat solid regions (all 4 neighbours identical) and transparent pixels are NEVER touched,
+        // so solid-rect readback tests (pixelscan, fv.pro, BotGuard) see 100% authentic rasterization.
+        // Only anti-aliased edge pixels (0 < alpha < 255 or transition edges) receive a deterministic +/-1 step.
+        const perturbImage = (image) => {
+            const data = image.data;
+            const w = image.width | 0;
+            const h = image.height | 0;
+            if (!w || !h || data.length < w * h * 4) return;
+            const orig = new Uint8ClampedArray(data);
+            const same = (a, b) => orig[a] === orig[b] && orig[a + 1] === orig[b + 1] && orig[a + 2] === orig[b + 2] && orig[a + 3] === orig[b + 3];
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const p = (y * w + x) * 4;
+                    const alpha = orig[p + 3];
+                    if (alpha === 0) continue;
+                    const up = p - w * 4, dn = p + w * 4, lf = p - 4, rt = p + 4;
+                    const allEqual = same(p, up) && same(p, dn) && same(p, lf) && same(p, rt);
+                    if (allEqual) continue;
+                    const hVal = Math.imul((seed ^ Math.imul(x, 2654435761) ^ Math.imul(y, 2246822519)) >>> 0, 3266489917) >>> 0;
+                    if (hVal & 1) continue;
+                    if (alpha < 255) {
+                        const delta = (hVal & 2) ? 1 : -1;
+                        data[p + 3] = Math.min(254, Math.max(1, alpha + delta));
+                    } else {
+                        const noneEqual = !same(p, up) && !same(p, dn) && !same(p, lf) && !same(p, rt);
+                        const allOpaque = orig[up + 3] === 255 && orig[dn + 3] === 255 && orig[lf + 3] === 255 && orig[rt + 3] === 255;
+                        if (noneEqual && allOpaque) {
+                            const ch = (hVal >>> 3) % 3;
+                            const v = orig[p + ch];
+                            data[p + ch] = ((hVal >>> 5) & 1) ? (v < 255 ? v + 1 : v - 1) : (v > 0 ? v - 1 : v + 1);
+                        }
+                    }
+                }
+            }
         };
         const raw2d = globalThis.CanvasRenderingContext2D?.prototype?.getImageData;
         const rawOffscreen2d = globalThis.OffscreenCanvasRenderingContext2D?.prototype?.getImageData;
         for (const proto of [globalThis.CanvasRenderingContext2D?.prototype, globalThis.OffscreenCanvasRenderingContext2D?.prototype]) {
             if (!proto)
                 continue;
-            wrap(proto, 'getImageData', (fn, self, args) => { const image = Reflect.apply(fn, self, args); perturb(image.data); return image; });
+            wrap(proto, 'getImageData', (fn, self, args) => { const image = Reflect.apply(fn, self, args); perturbImage(image); return image; });
         }
         if (globalThis.HTMLCanvasElement?.prototype && globalThis.document && raw2d) {
             const copy = (canvas) => {
@@ -108,7 +139,7 @@ function install(o) {
                 ctx.drawImage(canvas, 0, 0);
                 if (c.width && c.height) {
                     const image = Reflect.apply(raw2d, ctx, [0, 0, c.width, c.height]);
-                    perturb(image.data);
+                    perturbImage(image);
                     ctx.putImageData(image, 0, 0);
                 }
                 return c;
@@ -123,7 +154,7 @@ function install(o) {
                 ctx.drawImage(canvas, 0, 0);
                 if (c.width && c.height) {
                     const image = Reflect.apply(rawOffscreen2d, ctx, [0, 0, c.width, c.height]);
-                    perturb(image.data);
+                    perturbImage(image);
                     ctx.putImageData(image, 0, 0);
                 }
                 return c;
