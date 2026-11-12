@@ -85,6 +85,7 @@ export interface AppState {
   profiles: BrowserProfile[]
   proxies: ProxyNode[]
   groups: ProfileGroup[]
+  tagColors?: Record<string, string>
   defaultProxyId?: string
   keepAlive?: number
   preloadOnStart?: boolean

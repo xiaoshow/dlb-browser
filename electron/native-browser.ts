@@ -54,6 +54,23 @@ export interface SharedBookmarkNode {
   children?: SharedBookmarkNode[]
 }
 
+function isProfileLabelNode(c: any): boolean {
+  if (!c) return false
+  const title = String(c.name || c.title || '')
+  return (
+    c.url === 'chrome://version/' ||
+    c.guid === '00000000-0000-4000-8000-000000000098' ||
+    title.endsWith(' ｜') ||
+    title.endsWith(' |')
+  )
+}
+
+function buildProfileLabelTitle(profile?: any): string {
+  const rawName = String(profile?.name || 'Profile').trim()
+  const shortName = rawName.replace(/@gmail\.c(om|n)$/i, '').replace(/@googlemail\.com$/i, '').trim() || rawName
+  return `${shortName} ｜`
+}
+
 function isDividerNode(c: any): boolean {
   if (!c) return false
   const title = String(c.name || c.title || '')
@@ -64,12 +81,13 @@ function isDividerNode(c: any): boolean {
     title.includes('公用') ||
     title.includes('共享') ||
     title.includes('📌') ||
+    title.startsWith('｜') ||
     /^🟢\s*#\d+/.test(title)
   )
 }
 
 function buildDividerTitle(_number?: number, _profile?: any): string {
-  return '📌个人'
+  return '｜ 个人'
 }
 
 function parseRawBookmarkNodeToShared(node: any, idx: number, prevByKey: Map<string, SharedBookmarkNode>): SharedBookmarkNode | null {
@@ -123,10 +141,11 @@ export function extractSharedFromBookmarksJson(bm: any, existingShared: SharedBo
   }
   const seenKeys = new Set<string>()
   const extracted: SharedBookmarkNode[] = []
-  // 左边共享：只扫描并在遇到分界符 📌个人 之前的书签作为全局公用区
+  // 左边共享：跳过最左边的 Profile 名字标识，扫描并在遇到分界符 ｜ 个人 之前的书签作为全局公用区
   for (let i = 0; i < barChildren.length; i++) {
     const rawNode = barChildren[i]
     if (!rawNode) continue
+    if (isProfileLabelNode(rawNode)) continue
     if (isDividerNode(rawNode)) break
     const parsed = parseRawBookmarkNodeToShared(rawNode, i, prevByKey)
     if (!parsed) continue
@@ -206,18 +225,27 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
   await writeGenerated(join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
 
   const dividerTitle = buildDividerTitle(number, profile)
+  const profileLabelTitle = buildProfileLabelTitle(profile)
   const bg = `
 const BADGE_TEXT = '#${number}';
 const BADGE_COLOR = '${color}';
 const BADGE_TITLE = ${JSON.stringify(badgeTitle)};
-const DIVIDER_TITLE = '📌个人';
+const PROFILE_LABEL_TITLE = ${JSON.stringify(profileLabelTitle)};
+const PROFILE_LABEL_URL = 'chrome://version/';
+const DIVIDER_TITLE = ${JSON.stringify(dividerTitle)};
 const DIVIDER_URL = 'chrome://bookmarks/';
 let __prismSyncing = false;
+
+function isProfileLabel(c) {
+  if (!c) return false;
+  const t = String(c.title || '');
+  return c.url === PROFILE_LABEL_URL || t.endsWith(' ｜') || t.endsWith(' |');
+}
 
 function isDivider(c) {
   if (!c) return false;
   const t = String(c.title || '');
-  return c.url === DIVIDER_URL || t.includes('专属') || t.includes('公用') || t.includes('共享') || t.includes('📌') || /^🟢\\s*#\\d+/.test(t);
+  return c.url === DIVIDER_URL || t.includes('专属') || t.includes('公用') || t.includes('共享') || t.includes('📌') || t.startsWith('｜') || /^🟢\\s*#\\d+/.test(t);
 }
 
 function applyBadge() {
@@ -276,22 +304,38 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
   __prismSyncing = true;
   try {
     const barChildren = await chrome.bookmarks.getChildren('1');
+    // 0. 确保最左边 index = 0 是当前 Profile 名字标识
+    const labelNodes = barChildren.filter(isProfileLabel);
+    for (let l = 1; l < labelNodes.length; l++) {
+      await chrome.bookmarks.remove(labelNodes[l].id).catch(() => {});
+    }
+    let mainLabel = labelNodes[0];
+    if (!mainLabel) {
+      mainLabel = await chrome.bookmarks.create({ parentId: '1', index: 0, title: PROFILE_LABEL_TITLE, url: PROFILE_LABEL_URL }).catch(() => null);
+    } else {
+      if (mainLabel.title !== PROFILE_LABEL_TITLE) {
+        await chrome.bookmarks.update(mainLabel.id, { title: PROFILE_LABEL_TITLE }).catch(() => {});
+      }
+      if (mainLabel.index !== 0) {
+        await chrome.bookmarks.move(mainLabel.id, { parentId: '1', index: 0 }).catch(() => {});
+      }
+    }
+
     const divNodes = barChildren.filter(isDivider);
-    let mainDiv = divNodes[0];
     for (let d = 1; d < divNodes.length; d++) {
       await chrome.bookmarks.remove(divNodes[d].id).catch(() => {});
     }
 
-    // 1. 同步左侧共享区 (index: 0 .. sharedItems.length - 1)
+    // 1. 同步左侧共享区 (index: 1 .. sharedItems.length)
     const sharedUrls = new Set(sharedItems.filter(s => s.type !== 'folder' && !Array.isArray(s.children)).map(s => s.url));
     const sharedFolders = new Set(sharedItems.filter(s => s.type === 'folder' || Array.isArray(s.children)).map(s => s.name));
     
-    // 清理在分界符左侧但不属于 sharedItems 的无用旧项
+    // 清理在分界符左侧但不属于 sharedItems 和 ProfileLabel 的无用旧项
     const curChildrenBefore = await chrome.bookmarks.getChildren('1');
     const curDivPos = curChildrenBefore.findIndex(isDivider);
     const leftSlice = curDivPos === -1 ? curChildrenBefore : curChildrenBefore.slice(0, curDivPos);
     for (const node of leftSlice) {
-      if (isDivider(node)) continue;
+      if (isDivider(node) || isProfileLabel(node)) continue;
       if (node.url) {
         if (!sharedUrls.has(node.url)) await chrome.bookmarks.remove(node.id).catch(() => {});
       } else {
@@ -300,38 +344,39 @@ globalThis.__prismSyncSharedBookmarks = async function(sharedItems) {
     }
 
     for (let i = 0; i < sharedItems.length; i++) {
+      const targetIdx = i + 1;
       const item = sharedItems[i];
       const isFolder = item.type === 'folder' || Array.isArray(item.children);
       const currentChildren = await chrome.bookmarks.getChildren('1');
       if (isFolder) {
         const folderTitle = String(item.name || '文件夹').trim();
-        let existingFolder = currentChildren.find(c => !c.url && c.title === folderTitle && !isDivider(c));
+        let existingFolder = currentChildren.find(c => !c.url && c.title === folderTitle && !isDivider(c) && !isProfileLabel(c));
         if (!existingFolder) {
-          existingFolder = await chrome.bookmarks.create({ parentId: '1', index: i, title: folderTitle }).catch(() => null);
-        } else if (existingFolder.index !== i) {
-          await chrome.bookmarks.move(existingFolder.id, { parentId: '1', index: i }).catch(() => {});
+          existingFolder = await chrome.bookmarks.create({ parentId: '1', index: targetIdx, title: folderTitle }).catch(() => null);
+        } else if (existingFolder.index !== targetIdx) {
+          await chrome.bookmarks.move(existingFolder.id, { parentId: '1', index: targetIdx }).catch(() => {});
         }
         if (existingFolder) {
           await syncFolderChildren(existingFolder.id, item.children || []);
         }
       } else {
         const desiredTitle = item.hideTitle ? '' : String(item.name || '').replace(/^[🌐\\s]+/, '').trim();
-        const existing = currentChildren.find(c => c.url === item.url && !isDivider(c));
+        const existing = currentChildren.find(c => c.url === item.url && !isDivider(c) && !isProfileLabel(c));
         if (existing) {
           if (existing.title !== desiredTitle) {
             await chrome.bookmarks.update(existing.id, { title: desiredTitle }).catch(() => {});
           }
-          if (existing.index !== i) {
-            await chrome.bookmarks.move(existing.id, { parentId: '1', index: i }).catch(() => {});
+          if (existing.index !== targetIdx) {
+            await chrome.bookmarks.move(existing.id, { parentId: '1', index: targetIdx }).catch(() => {});
           }
         } else {
-          await chrome.bookmarks.create({ parentId: '1', index: i, title: desiredTitle, url: item.url }).catch(() => {});
+          await chrome.bookmarks.create({ parentId: '1', index: targetIdx, title: desiredTitle, url: item.url }).catch(() => {});
         }
       }
     }
 
-    // 2. 确保 📌个人 分界符位于 index = sharedItems.length
-    const divTargetIndex = sharedItems.length;
+    // 2. 确保 ｜ 个人 分界符位于 index = sharedItems.length + 1
+    const divTargetIndex = sharedItems.length + 1;
     const curChildrenAfterShared = await chrome.bookmarks.getChildren('1');
     const existingDiv = curChildrenAfterShared.find(isDivider);
     if (!existingDiv) {
@@ -357,6 +402,7 @@ function serializeTreeNodes(nodes) {
   const out = [];
   const seen = new Set();
   for (const c of (nodes || [])) {
+    if (isProfileLabel(c)) continue;
     if (isDivider(c)) break; // 核心：遇到分界线即止，只有左侧是公用共享区！
     if (c.children) {
       const k = 'folder:' + (c.title || '文件夹');
@@ -675,7 +721,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
       const after = children.slice(divIdx + 1)
       const before = children.slice(0, divIdx)
       const isNotShared = (n: any) => {
-        if (!n || isDividerNode(n)) return false
+        if (!n || isDividerNode(n) || isProfileLabelNode(n)) return false
         if (n.type === 'folder' || Array.isArray(n.children)) {
           return !sharedFolders.has(String(n.name || '').trim())
         }
@@ -706,7 +752,18 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     } catch {}
   }
 
-  // 2. 左边共享，📌个人 分界符在中间，右边个人！
+  // 2. 最左边 Profile 名字标识，接着全局共享书签，中间 ｜ 个人，右边本号个人专属书签！
+  const profileLabelGuid = '00000000-0000-4000-8000-000000000098'
+  const profileLabelNode = {
+    date_added: nowChrome,
+    date_last_used: '0',
+    guid: profileLabelGuid,
+    id: '90098',
+    name: buildProfileLabelTitle(profile),
+    type: 'url',
+    url: 'chrome://version/',
+  }
+
   const dividerGuid = '00000000-0000-4000-8000-000000000099'
   const dividerNode = {
     date_added: nowChrome,
@@ -718,12 +775,12 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     url: 'chrome://bookmarks/',
   }
 
-  // 布局：[...全局共享书签, 📌个人, ...本号个人专属书签]
+  // 布局：[Profile名 ｜, ...全局共享书签, ｜ 个人, ...本号个人专属书签]
   bm = {
     version: 1,
     roots: {
       bookmark_bar: {
-        children: [...sharedNodes, dividerNode, ...privateNodes],
+        children: [profileLabelNode, ...sharedNodes, dividerNode, ...privateNodes],
         date_added: nowChrome,
         date_modified: nowChrome,
         guid: '0bc5d13f-2cba-5d74-951f-3f233fe6c908',
@@ -791,8 +848,14 @@ SELECT m_map.target_icon_id, b.last_updated, b.image_data, b.width, b.height, b.
 FROM master.favicon_bitmaps b
 JOIN id_map m_map ON m_map.master_icon_id = b.icon_id
 WHERE NOT EXISTS (
-    SELECT 1 FROM favicon_bitmaps tb WHERE tb.icon_id = m_map.target_icon_id
+    SELECT 1 FROM favicon_bitmaps tb
+    WHERE tb.icon_id = m_map.target_icon_id
+      AND tb.width = b.width
+      AND length(tb.image_data) > 0
 );
+
+DELETE FROM icon_mapping
+WHERE icon_id NOT IN (SELECT DISTINCT icon_id FROM favicon_bitmaps WHERE length(image_data) > 0);
 
 INSERT INTO icon_mapping (page_url, icon_id, page_url_type)
 SELECT m_im.page_url, m_map.target_icon_id, m_im.page_url_type
@@ -816,21 +879,24 @@ INSERT OR IGNORE INTO meta (key, value) SELECT key, value FROM master.meta;
 
 async function ensureProfileSearchEngine(defaultDir: string): Promise<void> {
   const targetDb = join(defaultDir, 'Web Data')
+  // 关键保护：如果 Web Data 尚未由 Chromium 创建并完成 schema 初始化（包含 autofill 表及 meta.version），
+  // 绝不能提前新建只有 meta/keywords 表的空壳 SQLite 文件，否则会导致 Chromium 首次启动报 "Something went wrong when opening your profile"！
+  const exists = await access(targetDb).then(() => true).catch(() => false)
+  if (!exists) return
+  const hasSchema = await new Promise<boolean>((resolve) => {
+    const proc = spawn('/usr/bin/sqlite3', [targetDb, "SELECT value FROM meta WHERE key='version';"], { stdio: ['ignore', 'pipe', 'ignore'] })
+    let out = ''
+    proc.stdout.on('data', d => { out += String(d) })
+    proc.on('close', () => resolve(Boolean(out.trim())))
+    proc.on('error', () => resolve(false))
+  })
+  if (!hasSchema) {
+    // 如果之前残留了没有 version 的残缺空壳 Web Data，立即清理让 Chromium 原生重建
+    await rm(targetDb, { force: true }).catch(() => undefined)
+    return
+  }
   const guid = '485bf7d3-0215-45af-87dc-538868000099'
   const initSql = `
-CREATE TABLE IF NOT EXISTS meta (key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);
-CREATE TABLE IF NOT EXISTS keywords (
-    id INTEGER PRIMARY KEY, short_name VARCHAR NOT NULL, keyword VARCHAR NOT NULL,
-    favicon_url VARCHAR NOT NULL, url VARCHAR NOT NULL, safe_for_autoreplace INTEGER,
-    originating_url VARCHAR, date_created INTEGER DEFAULT 0, usage_count INTEGER DEFAULT 0,
-    input_encodings VARCHAR, suggest_url VARCHAR, prepopulate_id INTEGER DEFAULT 0,
-    created_by_policy INTEGER DEFAULT 0, last_modified INTEGER DEFAULT 0, sync_guid VARCHAR,
-    alternate_urls VARCHAR, image_url VARCHAR, search_url_post_params VARCHAR,
-    suggest_url_post_params VARCHAR, image_url_post_params VARCHAR, new_tab_url VARCHAR,
-    last_visited INTEGER DEFAULT 0, created_from_play_api INTEGER DEFAULT 0, is_active INTEGER DEFAULT 0,
-    starter_pack_id INTEGER DEFAULT 0, enforced_by_policy INTEGER DEFAULT 0, featured_by_policy INTEGER DEFAULT 0,
-    url_hash BLOB
-);
 INSERT OR REPLACE INTO keywords (
     id, short_name, keyword, favicon_url, url, safe_for_autoreplace,
     originating_url, date_created, usage_count, input_encodings,
@@ -1158,6 +1224,8 @@ export class NativeBrowsers {
       if (failed) throw new Error('原生窗口环境初始化失败')
       await setDock()
       if (!headless) await pipe.send('Target.activateTarget', { targetId })
+      // 首次启动的新环境：等待 Chromium 完成完整的 Web Data (autofill/meta) 初始化后，在后台静默补写 keywords 表
+      setTimeout(() => { void ensureProfileSearchEngine(join(directory, 'Default')) }, 2500)
       this.changed()
     } catch (error) { child.kill('SIGTERM'); cleanup(); throw error }
   }
@@ -1412,7 +1480,7 @@ export class NativeBrowsers {
           const seenPriv = new Set<string>()
           if (oldDivIdx >= 0) {
             for (const n of [...rawChildren.slice(oldDivIdx + 1), ...rawChildren.slice(0, oldDivIdx)]) {
-              if (!n || isDividerNode(n)) continue
+              if (!n || isDividerNode(n) || isProfileLabelNode(n)) continue
               const isFolder = n.type === 'folder' || Array.isArray(n.children)
               if (isFolder) {
                 if (sharedFolders.has(String(n.name || '').trim())) continue
@@ -1426,6 +1494,16 @@ export class NativeBrowsers {
               }
             }
           }
+          const prof = profileById.get(pid)
+          const profileLabelNode = {
+            date_added: nowChrome,
+            date_last_used: '0',
+            guid: '00000000-0000-4000-8000-000000000098',
+            id: '90098',
+            name: buildProfileLabelTitle(prof),
+            type: 'url',
+            url: 'chrome://version/',
+          }
           const dividerNode = {
             date_added: nowChrome,
             date_last_used: '0',
@@ -1436,7 +1514,7 @@ export class NativeBrowsers {
             url: 'chrome://bookmarks/',
           }
           if (bm?.roots?.bookmark_bar) {
-            bm.roots.bookmark_bar.children = [...sharedNodes, dividerNode, ...privateNodes]
+            bm.roots.bookmark_bar.children = [profileLabelNode, ...sharedNodes, dividerNode, ...privateNodes]
             await writeFile(bmPath, JSON.stringify(bm, null, 2), { mode: 0o600 })
           }
         } catch {}

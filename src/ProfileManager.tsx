@@ -6,18 +6,36 @@ import { resolveProfileAvatar, pickNotionAvatar } from './notion-avatars'
 import { stableFingerprint } from './profile-fingerprint'
 
 // Notion-style tags, persisted in profile.alias as "a, b, c" so the native toolbar badge keeps working.
-export const splitTags = (alias?: string) => [...new Set((alias ?? '').split(/[,，]/).map(t => t.trim()).filter(Boolean))]
+export const splitTags = (alias?: string) => [...new Set((alias ?? '').split(/[,，]/).map(t => t.replace(/\s*[\(（]副本[\)）]/g, '').trim()).filter(Boolean))]
 export const joinTags = (tags: string[]) => tags.join(', ')
 export const PRESET_TAGS = ['Flow']
 export const collectAllTags = (profiles: BrowserProfile[]) => {
   const fromProfiles = profiles.flatMap(p => [...splitTags(p.alias), ...splitTags(p.notes)])
   return [...new Set([...PRESET_TAGS, ...fromProfiles])]
 }
-const TAG_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red']
-export const tagColor = (tag: string) => { let h = 0; for (const c of tag) h = (h * 31 + c.charCodeAt(0)) >>> 0; return TAG_COLORS[h % TAG_COLORS.length] }
+export const TAG_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'] as const
+export const TAG_COLOR_META: { id: string; label: string; dot: string }[] = [
+  { id: 'gray',   label: '浅灰', dot: '#9ca3af' },
+  { id: 'brown',  label: '暖棕', dot: '#a16207' },
+  { id: 'orange', label: '活力橙', dot: '#f97316' },
+  { id: 'yellow', label: '明黄', dot: '#eab308' },
+  { id: 'green',  label: '翠绿', dot: '#22c55e' },
+  { id: 'blue',   label: '晴空蓝', dot: '#3b82f6' },
+  { id: 'purple', label: '优雅紫', dot: '#a855f7' },
+  { id: 'pink',   label: '樱花粉', dot: '#ec4899' },
+  { id: 'red',    label: '珊瑚红', dot: '#ef4444' },
+]
+export const tagColor = (tag: string, customColors?: Record<string, string>) => {
+  if (customColors?.[tag] && (TAG_COLORS as readonly string[]).includes(customColors[tag])) {
+    return customColors[tag]
+  }
+  let h = 0
+  for (const c of tag) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return TAG_COLORS[h % TAG_COLORS.length]
+}
 const DRAG_MIME = 'application/x-prism-tag'
 
-function TagCell({ profile, allTags, onChange, onReceive, onClickTag }: { profile: BrowserProfile; allTags: string[]; onChange: (tags: string[]) => void; onReceive: (fromId: string, tag: string, copy: boolean) => void; onClickTag?: (tag: string) => void }) {
+function TagCell({ profile, allTags, tagColors, onChange, onReceive, onClickTag, onContextMenuTag }: { profile: BrowserProfile; allTags: string[]; tagColors?: Record<string, string>; onChange: (tags: string[]) => void; onReceive: (fromId: string, tag: string, copy: boolean) => void; onClickTag?: (tag: string) => void; onContextMenuTag?: (tag: string, x: number, y: number) => void }) {
   const tags = splitTags(profile.alias)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -29,8 +47,9 @@ function TagCell({ profile, allTags, onChange, onReceive, onClickTag }: { profil
     onDragLeave={() => setOver(false)}
     onDrop={e => { setOver(false); const raw = e.dataTransfer.getData(DRAG_MIME); if (!raw) return; e.preventDefault(); const { from, tag } = JSON.parse(raw); onReceive(from, tag, e.altKey) }}
     onClick={() => setEditing(true)}>
-    {tags.map(tag => <span key={tag} className={`notion-tag tag-${tagColor(tag)}`} draggable title="点击筛选此 Tag；拖到其他 Profile 移动；按住 ⌥ 拖动为复制"
+    {tags.map(tag => <span key={tag} className={`notion-tag tag-${tagColor(tag, tagColors)}`} draggable title="点击筛选此 Tag；右键点击更换颜色；拖到其他 Profile 移动；按住 ⌥ 拖动为复制"
       onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ from: profile.id, tag })); e.dataTransfer.effectAllowed = 'copyMove' }}
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenuTag?.(tag, e.clientX, e.clientY) }}
       onClick={e => { e.stopPropagation(); onClickTag?.(tag) }}>
       {tag}<button type="button" aria-label={`移除 ${tag}`} onClick={e => { e.stopPropagation(); onChange(tags.filter(t => t !== tag)) }}>×</button>
     </span>)}
@@ -42,7 +61,7 @@ function TagCell({ profile, allTags, onChange, onReceive, onClickTag }: { profil
           else if (e.key === 'Backspace' && !draft && tags.length) onChange(tags.slice(0, -1))
           else if (e.key === 'Escape') { setDraft(''); setEditing(false) }
         }} />
-      {suggestions.length > 0 && <span className="tag-suggest">{suggestions.map(t => <button type="button" key={t} className={`notion-tag tag-${tagColor(t)}`} onMouseDown={e => { e.preventDefault(); add(t) }}>{t}</button>)}</span>}
+      {suggestions.length > 0 && <span className="tag-suggest">{suggestions.map(t => <button type="button" key={t} className={`notion-tag tag-${tagColor(t, tagColors)}`} onMouseDown={e => { e.preventDefault(); add(t) }}>{t}</button>)}</span>}
     </span> : !tags.length && <span className="tag-placeholder">＋ 添加标签</span>}
   </div>
 }
@@ -76,6 +95,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
   const [editingProfileName, setEditingProfileName] = useState('')
   const [groupMenuProfileId, setGroupMenuProfileId] = useState<string | null>(null)
+  const [tagColorMenu, setTagColorMenu] = useState<{ tag: string; x: number; y: number } | null>(null)
   const [moveTo, setMoveTo] = useState('')
   const [query, setQuery] = useState(''), [group, setGroup] = useState(''), [tagFilter, setTagFilter] = useState('')
   const [busy, setBusy] = useState<string[]>([]), [selected, setSelected] = useState<string[]>([])
@@ -152,7 +172,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       id,
       number,
       name: `${orig.name} (副本)`,
-      alias: orig.alias ? `${orig.alias} (副本)` : undefined,
+      alias: orig.alias,
       color: colors[state.profiles.length % colors.length],
       avatar: pickNotionAvatar(number - 1),
       proxyId: orig.proxyId, // 唯一继承项：只dup用的Proxy！
@@ -189,7 +209,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
         id,
         number,
         name: `${orig.name} (副本)`,
-        alias: orig.alias ? `${orig.alias} (副本)` : undefined,
+        alias: orig.alias,
         color: colors[(state.profiles.length + newProfiles.length) % colors.length],
         avatar: pickNotionAvatar(number - 1),
         proxyId: orig.proxyId, // 唯一继承项：只dup用的Proxy！
@@ -252,11 +272,22 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
   }, [profiles, selected])
 
   useEffect(() => {
-    if (!groupMenuProfileId) return
-    const closeMenu = () => setGroupMenuProfileId(null)
+    if (!groupMenuProfileId && !tagColorMenu) return
+    const closeMenu = () => {
+      setGroupMenuProfileId(null)
+      setTagColorMenu(null)
+    }
     window.addEventListener('click', closeMenu)
     return () => window.removeEventListener('click', closeMenu)
-  }, [groupMenuProfileId])
+  }, [groupMenuProfileId, tagColorMenu])
+
+  function handleSelectTagColor(tag: string, colorId: string) {
+    const nextTagColors = { ...(state.tagColors || {}), [tag]: colorId }
+    const nextState = { ...state, tagColors: nextTagColors }
+    onOrganize(nextState)
+    void window.profileBrowser?.saveState(nextState)
+    setTagColorMenu(null)
+  }
   return <main className="profile-manager">
     <header className="manager-heading">
       <div><h1>浏览器环境 <span>{state.profiles.length}</span></h1><p>独立窗口，固定配置。每个身份都有自己的空间。</p></div>
@@ -367,20 +398,36 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
     </div>
     {allTags.length > 0 && (
       <div className="tag-filter-bar">
-        <span className="tag-filter-label">Tag 筛选：</span>
+        <span className="tag-filter-label" title="点击标签筛选；右键或点调色盘可给标签换颜色">Tag 筛选：</span>
         <button type="button" className={`tag-filter-chip ${!tagFilter ? 'active' : ''}`} onClick={() => { setTagFilter(''); setSelected([]) }}>全部</button>
         {allTags.map(t => {
           const cnt = state.profiles.filter(p => hasTag(p, t)).length
           const isActive = tagFilter === t
           return (
-            <button
-              type="button"
-              key={t}
-              className={`notion-tag tag-${tagColor(t)} tag-filter-chip ${isActive ? 'active' : ''}`}
-              onClick={() => { setTagFilter(isActive ? '' : t); setSelected([]) }}
-            >
-              {t}<span className="tag-chip-count">{cnt}</span>
-            </button>
+            <div key={t} className="tag-filter-chip-wrap">
+              <button
+                type="button"
+                className={`notion-tag tag-${tagColor(t, state.tagColors)} tag-filter-chip ${isActive ? 'active' : ''}`}
+                title="点击筛选此 Tag；右键点击更换颜色"
+                onClick={() => { setTagFilter(isActive ? '' : t); setSelected([]) }}
+                onContextMenu={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setTagColorMenu({ tag: t, x: e.clientX, y: e.clientY })
+                }}
+              >
+                {t}<span className="tag-chip-count">{cnt}</span>
+                <span
+                  className="tag-color-trigger"
+                  title={`给 "${t}" 换颜色`}
+                  onClick={e => {
+                    e.stopPropagation()
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                    setTagColorMenu({ tag: t, x: rect.left, y: rect.bottom + 4 })
+                  }}
+                >🎨</span>
+              </button>
+            </div>
           )
         })}
       </div>
@@ -494,7 +541,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
           </div>
         </td>
         <td className="alias-cell">
-          <TagCell profile={p} allTags={allTags} onClickTag={(t) => { setTagFilter(tagFilter === t ? '' : t); setSelected([]) }} onChange={(tags) => onUpdateAlias(p.id, joinTags(tags))} onReceive={(from, tag, copy) => {
+          <TagCell profile={p} allTags={allTags} tagColors={state.tagColors} onContextMenuTag={(t, x, y) => setTagColorMenu({ tag: t, x, y })} onClickTag={(t) => { setTagFilter(tagFilter === t ? '' : t); setSelected([]) }} onChange={(tags) => onUpdateAlias(p.id, joinTags(tags))} onReceive={(from, tag, copy) => {
             if (from === p.id) return
             const target = splitTags(p.alias)
             if (!target.includes(tag)) onUpdateAlias(p.id, joinTags([...target, tag]))
@@ -548,6 +595,35 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       </tr>
     })}</tbody></table>{!profiles.length&&<div className="manager-empty"><Fingerprint size={42}/><h3>{state.profiles.length?'没有匹配的环境':'创建你的第一个浏览器环境'}</h3><p>选择一个代理节点，开始独立浏览。</p><button className="primary" onClick={onNew}>＋ 新建 Profile</button></div>}</div>
     <footer className="manager-footer"><span>已选择 <strong>{selected.length}</strong> 个环境 <small style={{ marginLeft: 8, color: '#94a3b8', fontSize: 11 }}>(⌘A 全选)</small></span><span>共 {profiles.length} 个 <b>1</b></span></footer>
+    {tagColorMenu && (
+      <div
+        className="tag-color-popover"
+        style={{
+          left: Math.max(12, Math.min(tagColorMenu.x, window.innerWidth - 210)),
+          top: Math.max(12, Math.min(tagColorMenu.y, window.innerHeight - 280)),
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="tag-color-popover-title">标签「{tagColorMenu.tag}」颜色</div>
+        <div className="tag-color-grid">
+          {TAG_COLOR_META.map(c => {
+            const current = tagColor(tagColorMenu.tag, state.tagColors)
+            return (
+              <button
+                type="button"
+                key={c.id}
+                className={`tag-color-option ${current === c.id ? 'active' : ''}`}
+                onClick={() => handleSelectTagColor(tagColorMenu.tag, c.id)}
+              >
+                <span className={`notion-tag tag-${c.id} tag-color-preview`}>{tagColorMenu.tag}</span>
+                <span className="tag-color-label">{c.label}</span>
+                {current === c.id && <b>✓</b>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )}
     {confirmDeleteIds && <div className="modal-backdrop higher" onClick={() => setConfirmDeleteIds(null)}>
       <section className="sheet rename-sheet" onClick={e => e.stopPropagation()}>
         <header><div><h2>确认删除环境</h2><p>将彻底删除所选 {confirmDeleteIds.length} 个 Profile 及其本地独立 Cookie 与缓存目录</p></div></header>
