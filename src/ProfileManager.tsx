@@ -451,16 +451,16 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       <span/>
       <small><i className="live-dot"/>{running.length} 个运行中</small>
     </div>
-    <div className="manager-table-scroll"><table><thead><tr><th><input type="checkbox" aria-label="选择当前列表" title="全选 / 取消全选 (⌘A)" checked={!!profiles.length&&profiles.every(p=>selected.includes(p.id))} onChange={e=>setSelected(e.target.checked?profiles.map(p=>p.id):[])}/></th><th>编号</th><th>名称 / 分组</th><th>别名 / 用途</th><th style={{ minWidth: 165, whiteSpace: 'nowrap' }}>浏览器环境</th><th>代理协议</th><th>出口 IP</th><th>状态</th><th>操作</th></tr></thead><tbody>{profiles.map((p, idx) => {
+    <div className="manager-table-scroll"><table><thead><tr><th className="col-check"><input type="checkbox" aria-label="选择当前列表" title="全选 / 取消全选 (⌘A)" checked={!!profiles.length&&profiles.every(p=>selected.includes(p.id))} onChange={e=>setSelected(e.target.checked?profiles.map(p=>p.id):[])}/></th><th className="col-num">编号</th><th className="col-name">名称 / 分组</th><th className="col-alias">别名 / 用途</th><th className="col-env">浏览器环境</th><th className="col-proxy">代理协议</th><th className="col-ip">出口 IP</th><th className="col-status">状态</th><th className="col-actions">操作</th></tr></thead><tbody>{profiles.map((p, idx) => {
       const proxy = state.proxies.find(n => n.id === p.proxyId)
       const live = running.includes(p.id)
       const result = tests[p.proxyId]
       const avatarSrc = resolveProfileAvatar(p.avatar, (p.number || idx + 1) - 1)
       const sharedCount = proxy && proxy.kind !== 'direct' && proxy.kind !== 'system' ? proxyUseCount(p.proxyId) : 0
       return <tr key={p.id}>
-        <td><input type="checkbox" aria-label={`选择 ${p.name}`} checked={selected.includes(p.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/></td>
-        <td className="profile-number"><span className={`number-pill ${live ? 'live' : ''}`}>#{p.number ?? idx + 1}</span></td>
-        <td>
+        <td className="col-check"><input type="checkbox" aria-label={`选择 ${p.name}`} checked={selected.includes(p.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/></td>
+        <td className="profile-number col-num"><span className={`number-pill ${live ? 'live' : ''}`}>#{p.number ?? idx + 1}</span></td>
+        <td className="col-name">
           <div className="profile-name-cell">
             <span className="environment-avatar notion-avatar"><img src={avatarSrc} alt="" /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -540,7 +540,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
             </div>
           </div>
         </td>
-        <td className="alias-cell">
+        <td className="alias-cell col-alias">
           <TagCell profile={p} allTags={allTags} tagColors={state.tagColors} onContextMenuTag={(t, x, y) => setTagColorMenu({ tag: t, x, y })} onClickTag={(t) => { setTagFilter(tagFilter === t ? '' : t); setSelected([]) }} onChange={(tags) => onUpdateAlias(p.id, joinTags(tags))} onReceive={(from, tag, copy) => {
             if (from === p.id) return
             const target = splitTags(p.alias)
@@ -548,14 +548,14 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
             if (!copy) { const src = state.profiles.find(x => x.id === from); if (src) onUpdateAlias(from, joinTags(splitTags(src.alias).filter(t => t !== tag))) }
           }} />
         </td>
-        <td style={{ minWidth: 165, whiteSpace: 'nowrap' }}>
+        <td className="col-env">
           <div className="env-icons">
-            <span className="env-badge" title="Fingerprint Chromium C++ 内核级指纹隔离"><Fingerprint size={15}/><Cpu size={15}/><Globe2 size={15}/><b>148</b></span>
+            <span className="env-badge" title="Fingerprint Chromium C++ 内核级指纹隔离"><Fingerprint size={14}/><Cpu size={14}/><Globe2 size={14}/><b>148</b></span>
             <span style={{ whiteSpace: 'nowrap', display: 'inline-block' }}>{p.locale==='auto'?'IP 语言':p.locale||'系统语言'}</span>
           </div>
           <small>{region(p.timezone)}</small>
         </td>
-        <td>
+        <td className="col-proxy">
           {!proxy ? <strong className="node-name">代理缺失</strong> : proxy.kind === 'direct' ? <>
             <strong className="node-name muted">No Proxy</strong>
             <small>本机直连 · 不走代理</small>
@@ -567,7 +567,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
             <small><span className="proto-tag">{proxy.kind}</span>{proxy.host?` ${proxy.host}:${proxy.port}`:''}</small>
           </>}
         </td>
-        <td>
+        <td className="col-ip">
           <div className="ip-cell">
             <button className={`ip-status-btn ${result && result !== 'testing' ? (result.ok ? 'ok' : 'bad') : ''}`} title="点击测试代理连通性与出口 IP" disabled={!proxy||result==='testing'} onClick={()=>void test(p.proxyId)}>
               {result === 'testing' ? <RefreshCw size={14} className="spin"/> : <ArrowLeftRight size={14}/>}
@@ -580,8 +580,8 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
             </div>
           </div>
         </td>
-        <td><span className={`runtime-status ${live?'running':''}`}><i/>{busy.includes(p.id)?'处理中':live?'运行中':'未启动'}</span></td>
-        <td>
+        <td className="col-status"><span className={`runtime-status ${live?'running':''}`}><i/>{busy.includes(p.id)?'处理中':live?'运行中':'未启动'}</span></td>
+        <td className="col-actions">
           <div className="manager-row-actions">
             <button className="primary" disabled={busy.includes(p.id)} onClick={()=>void operate(p)}><Play size={14}/>{live?'显示':'启动'}</button>
             {live&&<button className="secondary stop-profile" title={`停止 ${p.name}`} onClick={()=>void operate(p,true)}><Square size={13}/>停止</button>}
