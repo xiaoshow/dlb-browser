@@ -8,30 +8,35 @@ import { stableFingerprint } from './profile-fingerprint'
 // Notion-style tags, persisted in profile.alias as "a, b, c" so the native toolbar badge keeps working.
 export const splitTags = (alias?: string) => [...new Set((alias ?? '').split(/[,，]/).map(t => t.trim()).filter(Boolean))]
 export const joinTags = (tags: string[]) => tags.join(', ')
+export const PRESET_TAGS = ['Flow']
+export const collectAllTags = (profiles: BrowserProfile[]) => {
+  const fromProfiles = profiles.flatMap(p => [...splitTags(p.alias), ...splitTags(p.notes)])
+  return [...new Set([...PRESET_TAGS, ...fromProfiles])]
+}
 const TAG_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red']
-const tagColor = (tag: string) => { let h = 0; for (const c of tag) h = (h * 31 + c.charCodeAt(0)) >>> 0; return TAG_COLORS[h % TAG_COLORS.length] }
+export const tagColor = (tag: string) => { let h = 0; for (const c of tag) h = (h * 31 + c.charCodeAt(0)) >>> 0; return TAG_COLORS[h % TAG_COLORS.length] }
 const DRAG_MIME = 'application/x-prism-tag'
 
-function TagCell({ profile, allTags, onChange, onReceive }: { profile: BrowserProfile; allTags: string[]; onChange: (tags: string[]) => void; onReceive: (fromId: string, tag: string, copy: boolean) => void }) {
+function TagCell({ profile, allTags, onChange, onReceive, onClickTag }: { profile: BrowserProfile; allTags: string[]; onChange: (tags: string[]) => void; onReceive: (fromId: string, tag: string, copy: boolean) => void; onClickTag?: (tag: string) => void }) {
   const tags = splitTags(profile.alias)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [over, setOver] = useState(false)
   const add = (raw: string) => { const next = splitTags(joinTags([...tags, raw])); if (next.length !== tags.length) onChange(next); setDraft('') }
-  const suggestions = allTags.filter(t => !tags.includes(t) && t.toLowerCase().includes(draft.trim().toLowerCase())).slice(0, 6)
+  const suggestions = allTags.filter(t => !tags.includes(t) && t.toLowerCase().includes(draft.trim().toLowerCase()))
   return <div className={`tag-cell ${over ? 'drop-over' : ''}`}
     onDragOver={e => { if (!e.dataTransfer.types.includes(DRAG_MIME)) return; e.preventDefault(); e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'; setOver(true) }}
     onDragLeave={() => setOver(false)}
     onDrop={e => { setOver(false); const raw = e.dataTransfer.getData(DRAG_MIME); if (!raw) return; e.preventDefault(); const { from, tag } = JSON.parse(raw); onReceive(from, tag, e.altKey) }}
     onClick={() => setEditing(true)}>
-    {tags.map(tag => <span key={tag} className={`notion-tag tag-${tagColor(tag)}`} draggable title="拖到其他 Profile 移动；按住 ⌥ 拖动为复制"
+    {tags.map(tag => <span key={tag} className={`notion-tag tag-${tagColor(tag)}`} draggable title="点击筛选此 Tag；拖到其他 Profile 移动；按住 ⌥ 拖动为复制"
       onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ from: profile.id, tag })); e.dataTransfer.effectAllowed = 'copyMove' }}
-      onClick={e => e.stopPropagation()}>
+      onClick={e => { e.stopPropagation(); onClickTag?.(tag) }}>
       {tag}<button type="button" aria-label={`移除 ${tag}`} onClick={e => { e.stopPropagation(); onChange(tags.filter(t => t !== tag)) }}>×</button>
     </span>)}
     {editing ? <span className="tag-input-wrap" onClick={e => e.stopPropagation()}>
-      <input autoFocus className="tag-input" value={draft} placeholder="输入后回车" onChange={e => setDraft(e.target.value)}
-        onBlur={() => { if (draft.trim()) add(draft); setTimeout(() => setEditing(false), 120) }}
+      <input autoFocus className="tag-input" value={draft} placeholder="输入或选择标签…" onChange={e => setDraft(e.target.value)}
+        onBlur={() => { if (draft.trim()) add(draft); setTimeout(() => setEditing(false), 150) }}
         onKeyDown={e => {
           if ((e.key === 'Enter' || e.key === ',') && draft.trim()) { e.preventDefault(); add(draft) }
           else if (e.key === 'Backspace' && !draft && tags.length) onChange(tags.slice(0, -1))
@@ -70,13 +75,19 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
   const [editingFolderName, setEditingFolderName] = useState('')
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
   const [editingProfileName, setEditingProfileName] = useState('')
+  const [groupMenuProfileId, setGroupMenuProfileId] = useState<string | null>(null)
   const [moveTo, setMoveTo] = useState('')
-  const [query, setQuery] = useState(''), [group, setGroup] = useState('')
+  const [query, setQuery] = useState(''), [group, setGroup] = useState(''), [tagFilter, setTagFilter] = useState('')
   const [busy, setBusy] = useState<string[]>([]), [selected, setSelected] = useState<string[]>([])
   const [tests, setTests] = useState<Record<string, ProxyTestResult | 'testing'>>({})
   const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[] | null>(null)
-  const allTags = [...new Set(state.profiles.flatMap(p => splitTags(p.alias)))]
-  const profiles = state.profiles.filter(p => (group ? p.groupId === group : (query.trim() || !state.groups.find(g => g.id === p.groupId)?.collapsed)) && `${p.name} ${p.alias ?? ''} ${p.notes ?? ''}`.toLowerCase().includes(query.toLowerCase()))
+  const allTags = collectAllTags(state.profiles)
+  const hasTag = (p: BrowserProfile, t: string) => [...splitTags(p.alias), ...splitTags(p.notes)].includes(t)
+  const profiles = state.profiles.filter(p =>
+    (group ? p.groupId === group : (query.trim() || tagFilter || !state.groups.find(g => g.id === p.groupId)?.collapsed)) &&
+    (!tagFilter || hasTag(p, tagFilter)) &&
+    `${p.name} ${p.alias ?? ''} ${p.notes ?? ''}`.toLowerCase().includes(query.toLowerCase())
+  )
   async function operate(p: BrowserProfile, stop = false) { setBusy(ids => [...ids,p.id]); try { if(stop) await onStop(p.id);else await onOpen(p) } finally {setBusy(ids => ids.filter(id=>id!==p.id))} }
   async function batch(stop:boolean) { for(const p of state.profiles.filter(p=>selected.includes(p.id))) await operate(p,stop) }
   async function test(id:string) { const proxy=state.proxies.find(p=>p.id===id);if(!proxy || tests[id]==='testing')return;setTests(v=>({...v,[id]:'testing'}));try{const result=await window.profileBrowser!.testProxy(proxy);setTests(v=>({...v,[id]:result}))}catch{setTests(v=>({...v,[id]:{ok:false,error:'检测失败，请重试'}}))} }
@@ -239,6 +250,13 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [profiles, selected])
+
+  useEffect(() => {
+    if (!groupMenuProfileId) return
+    const closeMenu = () => setGroupMenuProfileId(null)
+    window.addEventListener('click', closeMenu)
+    return () => window.removeEventListener('click', closeMenu)
+  }, [groupMenuProfileId])
   return <main className="profile-manager">
     <header className="manager-heading">
       <div><h1>浏览器环境 <span>{state.profiles.length}</span></h1><p>独立窗口，固定配置。每个身份都有自己的空间。</p></div>
@@ -335,7 +353,38 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       {newFolder && <form onSubmit={e=>{e.preventDefault();const name=folderName.trim();if(!name)return;onOrganize({...state,groups:[...state.groups,{id:crypto.randomUUID(),name,color:'#64748b',collapsed:true}]});setFolderName('');setNewFolder(false)}}><input aria-label="文件夹名称" autoFocus placeholder="例如：偶尔使用" maxLength={40} value={folderName} onChange={e=>setFolderName(e.target.value)}/><button className="secondary" disabled={!folderName.trim()}>创建</button><button type="button" className="secondary" onClick={()=>setNewFolder(false)}>取消</button></form>}
       <small>折叠的文件夹在全部列表中隐藏；点击文件夹或搜索即可查看，不会自动启动。</small>
     </section>
-    <div className="manager-search"><select aria-label="按文件夹筛选" value={group} onChange={e=>{setGroup(e.target.value);setSelected([])}}><option value="">全部文件夹</option>{state.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select><label><Search size={19}/><input aria-label="搜索 Profile" placeholder="搜索环境名称、别名或备注" value={query} onChange={e=>{setQuery(e.target.value);setSelected([])}}/></label><span className="mode-label"><Monitor size={16}/>Chrome 独立窗口</span></div>
+    <div className="manager-search">
+      <select aria-label="按文件夹筛选" value={group} onChange={e=>{setGroup(e.target.value);setSelected([])}}><option value="">全部文件夹</option>{state.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select>
+      <select aria-label="按 Tag 筛选" value={tagFilter} onChange={e=>{setTagFilter(e.target.value);setSelected([])}}>
+        <option value="">全部标签 (Tag)</option>
+        {allTags.map(t => {
+          const cnt = state.profiles.filter(p => hasTag(p, t)).length
+          return <option key={t} value={t}>{t} ({cnt})</option>
+        })}
+      </select>
+      <label><Search size={19}/><input aria-label="搜索 Profile" placeholder="搜索环境名称、别名或备注" value={query} onChange={e=>{setQuery(e.target.value);setSelected([])}}/></label>
+      <span className="mode-label"><Monitor size={16}/>Chrome 独立窗口</span>
+    </div>
+    {allTags.length > 0 && (
+      <div className="tag-filter-bar">
+        <span className="tag-filter-label">Tag 筛选：</span>
+        <button type="button" className={`tag-filter-chip ${!tagFilter ? 'active' : ''}`} onClick={() => { setTagFilter(''); setSelected([]) }}>全部</button>
+        {allTags.map(t => {
+          const cnt = state.profiles.filter(p => hasTag(p, t)).length
+          const isActive = tagFilter === t
+          return (
+            <button
+              type="button"
+              key={t}
+              className={`notion-tag tag-${tagColor(t)} tag-filter-chip ${isActive ? 'active' : ''}`}
+              onClick={() => { setTagFilter(isActive ? '' : t); setSelected([]) }}
+            >
+              {t}<span className="tag-chip-count">{cnt}</span>
+            </button>
+          )
+        })}
+      </div>
+    )}
     <div className="manager-actions">
       <button className="primary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(false)}><Play size={16}/>启动所选</button>
       <button className="secondary" disabled={!selected.length||!!busy.length} onClick={()=>void batch(true)}><Square size={16}/>停止</button>
@@ -402,12 +451,50 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
                   </button>
                 </div>
               )}
-              <small>{state.groups.find(g=>g.id===p.groupId)?.name||'未分组'}{p.notes ? ` · ${p.notes}` : ''}</small>
+              <div className="profile-group-inline-wrap">
+                <button
+                  type="button"
+                  className="profile-group-inline-btn"
+                  title="点击快速切换所属分组"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setGroupMenuProfileId(groupMenuProfileId === p.id ? null : p.id)
+                  }}
+                >
+                  <Folder size={11} />
+                  <span>{state.groups.find(g => g.id === p.groupId)?.name || '未分组'}</span>
+                  <ChevronDown size={11} />
+                </button>
+                {p.notes ? <small className="profile-notes-inline"> · {p.notes}</small> : null}
+                {groupMenuProfileId === p.id && (
+                  <div className="profile-group-popover" onClick={(e) => e.stopPropagation()}>
+                    <div className="profile-group-popover-title">切换分组</div>
+                    {state.groups.map(g => (
+                      <button
+                        type="button"
+                        key={g.id}
+                        className={`profile-group-option ${p.groupId === g.id ? 'active' : ''}`}
+                        onClick={() => {
+                          onOrganize({
+                            ...state,
+                            profiles: state.profiles.map(item => item.id === p.id ? { ...item, groupId: g.id } : item)
+                          })
+                          setGroupMenuProfileId(null)
+                        }}
+                      >
+                        <Folder size={12} />
+                        <span>{g.name}</span>
+                        {p.groupId === g.id && <b>✓</b>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </td>
         <td className="alias-cell">
-          <TagCell profile={p} allTags={allTags} onChange={(tags) => onUpdateAlias(p.id, joinTags(tags))} onReceive={(from, tag, copy) => {
+          <TagCell profile={p} allTags={allTags} onClickTag={(t) => { setTagFilter(tagFilter === t ? '' : t); setSelected([]) }} onChange={(tags) => onUpdateAlias(p.id, joinTags(tags))} onReceive={(from, tag, copy) => {
             if (from === p.id) return
             const target = splitTags(p.alias)
             if (!target.includes(tag)) onUpdateAlias(p.id, joinTags([...target, tag]))
