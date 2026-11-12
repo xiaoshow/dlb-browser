@@ -40,29 +40,93 @@ function TagCell({ profile, allTags, tagColors, onChange, onReceive, onClickTag,
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [over, setOver] = useState(false)
+  const [popoverPos, setPopoverPos] = useState<{ x: number; y: number; width: number } | null>(null)
   const add = (raw: string) => { const next = splitTags(joinTags([...tags, raw])); if (next.length !== tags.length) onChange(next); setDraft('') }
-  const suggestions = allTags.filter(t => !tags.includes(t) && t.toLowerCase().includes(draft.trim().toLowerCase()))
-  return <div className={`tag-cell ${over ? 'drop-over' : ''}`}
+  const trimmedDraft = draft.trim()
+  const suggestions = allTags.filter(t => !tags.includes(t) && t.toLowerCase().includes(trimmedDraft.toLowerCase()))
+  const canCreateNew = trimmedDraft.length > 0 && !allTags.some(t => t.toLowerCase() === trimmedDraft.toLowerCase()) && !tags.some(t => t.toLowerCase() === trimmedDraft.toLowerCase())
+
+  const openEditor = (el: HTMLElement) => {
+    const rect = el.getBoundingClientRect()
+    setPopoverPos({
+      x: Math.max(12, Math.min(rect.left, window.innerWidth - 260)),
+      y: Math.min(rect.bottom + 4, window.innerHeight - 280),
+      width: Math.max(220, rect.width)
+    })
+    setEditing(true)
+  }
+
+  return <div className={`tag-cell ${over ? 'drop-over' : ''} ${editing ? 'is-editing' : ''}`}
+    title="点击添加或管理标签"
     onDragOver={e => { if (!e.dataTransfer.types.includes(DRAG_MIME)) return; e.preventDefault(); e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'; setOver(true) }}
     onDragLeave={() => setOver(false)}
     onDrop={e => { setOver(false); const raw = e.dataTransfer.getData(DRAG_MIME); if (!raw) return; e.preventDefault(); const { from, tag } = JSON.parse(raw); onReceive(from, tag, e.altKey) }}
-    onClick={() => setEditing(true)}>
+    onClick={e => openEditor(e.currentTarget as HTMLElement)}>
     {tags.map(tag => <span key={tag} className={`notion-tag tag-${tagColor(tag, tagColors)}`} draggable title="点击筛选此 Tag；右键点击更换颜色；拖到其他 Profile 移动；按住 ⌥ 拖动为复制"
       onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ from: profile.id, tag })); e.dataTransfer.effectAllowed = 'copyMove' }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenuTag?.(tag, e.clientX, e.clientY) }}
       onClick={e => { e.stopPropagation(); onClickTag?.(tag) }}>
       {tag}<button type="button" aria-label={`移除 ${tag}`} onClick={e => { e.stopPropagation(); onChange(tags.filter(t => t !== tag)) }}>×</button>
     </span>)}
-    {editing ? <span className="tag-input-wrap" onClick={e => e.stopPropagation()}>
-      <input autoFocus className="tag-input" value={draft} placeholder="输入或选择标签…" onChange={e => setDraft(e.target.value)}
-        onBlur={() => { if (draft.trim()) add(draft); setTimeout(() => setEditing(false), 150) }}
+    {!editing && (
+      tags.length > 0 ? (
+        <button
+          type="button"
+          className="tag-add-inline-btn"
+          title="点击添加标签"
+          onClick={e => {
+            e.stopPropagation()
+            openEditor((e.currentTarget.parentElement as HTMLElement) || (e.currentTarget as HTMLElement))
+          }}
+        >＋</button>
+      ) : (
+        <span className="tag-placeholder">＋ 添加标签</span>
+      )
+    )}
+    {editing && <span className="tag-input-wrap" onClick={e => e.stopPropagation()}>
+      <input autoFocus className="tag-input" value={draft} placeholder="搜索或新建标签…" onChange={e => setDraft(e.target.value)}
+        onBlur={() => { if (draft.trim()) add(draft); setTimeout(() => setEditing(false), 160) }}
         onKeyDown={e => {
           if ((e.key === 'Enter' || e.key === ',') && draft.trim()) { e.preventDefault(); add(draft) }
           else if (e.key === 'Backspace' && !draft && tags.length) onChange(tags.slice(0, -1))
           else if (e.key === 'Escape') { setDraft(''); setEditing(false) }
         }} />
-      {suggestions.length > 0 && <span className="tag-suggest">{suggestions.map(t => <button type="button" key={t} className={`notion-tag tag-${tagColor(t, tagColors)}`} onMouseDown={e => { e.preventDefault(); add(t) }}>{t}</button>)}</span>}
-    </span> : !tags.length && <span className="tag-placeholder">＋ 添加标签</span>}
+      {popoverPos && (
+        <div
+          className="notion-tag-popover"
+          style={{ left: popoverPos.x, top: popoverPos.y, minWidth: popoverPos.width }}
+          onMouseDown={e => e.preventDefault()}
+        >
+          <div className="notion-tag-popover-header">选择标签或直接输入新建</div>
+          <div className="notion-tag-popover-list">
+            {canCreateNew && (
+              <button
+                type="button"
+                className="notion-tag-popover-row create-row"
+                onClick={() => add(trimmedDraft)}
+              >
+                <span className="create-prefix">新建</span>
+                <span className={`notion-tag tag-${tagColor(trimmedDraft, tagColors)}`}>{trimmedDraft}</span>
+              </button>
+            )}
+            {suggestions.map(t => (
+              <button
+                type="button"
+                key={t}
+                className="notion-tag-popover-row"
+                onClick={() => add(t)}
+              >
+                <span className={`notion-tag tag-${tagColor(t, tagColors)}`}>{t}</span>
+                <span className="row-hint">点击添加</span>
+              </button>
+            ))}
+            {!canCreateNew && suggestions.length === 0 && (
+              <div className="notion-tag-popover-empty">输入文字按回车即可新建标签</div>
+            )}
+          </div>
+        </div>
+      )}
+    </span>}
   </div>
 }
 
