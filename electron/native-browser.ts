@@ -195,17 +195,6 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
     description: 'Prism Profile Environment Badge',
     key: BADGE_EXTENSION_KEY,
     permissions: ['bookmarks'],
-    chrome_settings_overrides: {
-      search_provider: {
-        name: 'Google',
-        keyword: 'google.com',
-        search_url: 'https://www.google.com/search?q={searchTerms}',
-        favicon_url: 'https://www.google.com/favicon.ico',
-        suggest_url: 'https://www.google.com/complete/search?client=chrome&q={searchTerms}',
-        encoding: 'UTF-8',
-        is_default: true
-      }
-    },
     action: {
       default_title: badgeTitle,
       default_popup: 'popup.html'
@@ -527,6 +516,10 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     template_url_data: googleTemplateData,
     mirrored_template_url_data: googleTemplateData,
   }
+  prefs.default_search_provider = {
+    enabled: true,
+    guid: googleTemplateData.synced_guid,
+  }
   prefs.countryid_at_install = 224
   prefs.extensions = {
     ...(prefs.extensions || {}),
@@ -785,6 +778,49 @@ INSERT OR IGNORE INTO meta (key, value) SELECT key, value FROM master.meta;
     proc.on('error', () => resolve())
   })
 }
+
+async function ensureProfileSearchEngine(defaultDir: string): Promise<void> {
+  const targetDb = join(defaultDir, 'Web Data')
+  const guid = '485bf7d3-0215-45af-87dc-538868000099'
+  const initSql = `
+CREATE TABLE IF NOT EXISTS meta (key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);
+CREATE TABLE IF NOT EXISTS keywords (
+    id INTEGER PRIMARY KEY, short_name VARCHAR NOT NULL, keyword VARCHAR NOT NULL,
+    favicon_url VARCHAR NOT NULL, url VARCHAR NOT NULL, safe_for_autoreplace INTEGER,
+    originating_url VARCHAR, date_created INTEGER DEFAULT 0, usage_count INTEGER DEFAULT 0,
+    input_encodings VARCHAR, suggest_url VARCHAR, prepopulate_id INTEGER DEFAULT 0,
+    created_by_policy INTEGER DEFAULT 0, last_modified INTEGER DEFAULT 0, sync_guid VARCHAR,
+    alternate_urls VARCHAR, image_url VARCHAR, search_url_post_params VARCHAR,
+    suggest_url_post_params VARCHAR, image_url_post_params VARCHAR, new_tab_url VARCHAR,
+    last_visited INTEGER DEFAULT 0, created_from_play_api INTEGER DEFAULT 0, is_active INTEGER DEFAULT 0,
+    starter_pack_id INTEGER DEFAULT 0, enforced_by_policy INTEGER DEFAULT 0, featured_by_policy INTEGER DEFAULT 0,
+    url_hash BLOB
+);
+INSERT OR REPLACE INTO keywords (
+    id, short_name, keyword, favicon_url, url, safe_for_autoreplace,
+    originating_url, date_created, usage_count, input_encodings,
+    suggest_url, prepopulate_id, created_by_policy, last_modified,
+    sync_guid, alternate_urls, image_url, search_url_post_params,
+    suggest_url_post_params, image_url_post_params, new_tab_url,
+    last_visited, created_from_play_api, is_active, starter_pack_id,
+    enforced_by_policy, featured_by_policy
+) VALUES (
+    100, "Google", "google.com", "https://www.google.com/favicon.ico",
+    "https://www.google.com/search?q={searchTerms}", 0,
+    "", 13350000000000000, 10, "UTF-8",
+    "https://www.google.com/complete/search?client=chrome&q={searchTerms}", 0, 0, 13350000000000000,
+    "${guid}", "[]", "", "", "", "", "https://www.google.com/",
+    0, 0, 1, 0, 0, 0
+);
+`
+  await new Promise<void>((resolve) => {
+    const proc = spawn('/usr/bin/sqlite3', [targetDb], { stdio: ['pipe', 'ignore', 'ignore'] })
+    proc.stdin.write(initSql)
+    proc.stdin.end()
+    proc.on('close', () => resolve())
+    proc.on('error', () => resolve())
+  })
+}
 type Running = {
   child: ChildProcess;
   pipe: ChromePipe;
@@ -863,6 +899,7 @@ export class NativeBrowsers {
     const homepageUrl = pathToFileURL(homepage).href
     await ensureProfilePreferences(directory, profile, number, homepageUrl, proxy)
     await ensureProfileFavicons(join(directory, 'Default'), this.resources, this.root)
+    await ensureProfileSearchEngine(join(directory, 'Default'))
     const args = [
       `--user-data-dir=${directory}`,
       '--remote-debugging-pipe',
