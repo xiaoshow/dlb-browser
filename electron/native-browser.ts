@@ -67,10 +67,11 @@ function isProfileLabelNode(c: any): boolean {
   )
 }
 
-function buildProfileLabelTitle(profile?: any): string {
+function buildProfileLabelTitle(number?: number, profile?: any): string {
   const rawName = String(profile?.name || 'Profile').trim()
   const shortName = rawName.replace(/@gmail\.c(om|n)$/i, '').replace(/@googlemail\.com$/i, '').trim() || rawName
-  return `${shortName} ｜`
+  const prefix = typeof number === 'number' && number > 0 ? `#${number} ` : (profile?.sequenceNumber || profile?.number ? `#${profile.sequenceNumber || profile.number} ` : '')
+  return `${prefix}${shortName} ｜`
 }
 
 function isDividerNode(c: any): boolean {
@@ -227,7 +228,7 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
   await writeGenerated(join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
 
   const dividerTitle = buildDividerTitle(number, profile)
-  const profileLabelTitle = buildProfileLabelTitle(profile)
+  const profileLabelTitle = buildProfileLabelTitle(number, profile)
   const bg = `
 const BADGE_TEXT = '#${number}';
 const BADGE_COLOR = '${color}';
@@ -762,7 +763,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     date_last_used: '0',
     guid: profileLabelGuid,
     id: '90098',
-    name: buildProfileLabelTitle(profile),
+    name: buildProfileLabelTitle(number, profile),
     type: 'url',
     url: 'chrome://version/',
   }
