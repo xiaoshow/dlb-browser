@@ -43,6 +43,8 @@ async function writeGenerated(path: string, content: string) {
 
 const BADGE_EXTENSION_KEY = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAp6LSRGsAsShxqw6a88PoEca6UQCRRG3Y/39WG6joN+A/jTD1P1bxmNd1Xk8JedBxT0Bof/P8NrxLrwUrXs0A52rATovBcC261W8V7XzwtLOXngAKpR+BrY5AfOdpTOMfzIh1spt4HUdXsZGBTa3ZoLf3mY93sTt3xhyVxdFoUB7R4DzP7/ecTSX3z+XcqJ7rKQbaLnXnfW/JkQIpiiiv856+9TfOAS3nHvqMDIhgPpA6hgKhftDWSPECHxLShVlqwAvQpR19HTy1KzagMOpYM4UImfopFW/1O1OF1avfxFOAKlKphZdnWhrvl7fp8k++mdbNFppY7Ei93ANEHKqioQIDAQAB'
 const BADGE_EXTENSION_ID = 'jmfmedbigjdliajdcninidnbeidgbcoi'
+const BROWSER_SKILL_EXTENSION_ID = 'kmdmgcehgmnhnnonjlbdcglgpggdhcll'
+const BROWSER_SKILL_EXTENSION_DIR = join(homedir(), 'workdir/browser-skill-extension')
 
 export interface SharedBookmarkNode {
   id: string
@@ -567,6 +569,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     pinned_extensions: Array.from(new Set([
       ...(prefs.extensions?.pinned_extensions || []),
       BADGE_EXTENSION_ID,
+      BROWSER_SKILL_EXTENSION_ID,
     ])),
   }
   const downloadsPath = join(homedir(), 'Downloads')
@@ -1049,7 +1052,11 @@ export class NativeBrowsers {
     if (profile.webRTCPolicy === 'proxy-only') args.push('--force-webrtc-ip-handling-policy=disable_non_proxied_udp')
     const theme = PROFILE_PALETTE[number % PROFILE_PALETTE.length]
     const extDir = await ensureProfileBadgeExtension(directory, number, profile, proxy, theme.hex)
-    args.push(`--load-extension=${extDir}`)
+    const extPaths = [extDir]
+    if (await access(join(BROWSER_SKILL_EXTENSION_DIR, 'manifest.json')).then(() => true).catch(() => false)) {
+      extPaths.push(BROWSER_SKILL_EXTENSION_DIR)
+    }
+    args.push(`--load-extension=${extPaths.join(',')}`)
     const child = spawn(binary, args, { stdio: ['ignore','ignore','pipe','pipe','pipe'], env: { ...process.env, ...(profile.timezone && profile.timezone !== 'local' ? { TZ: profile.timezone } : {}) } })
     // Drain stderr without recording visited URLs, proxy credentials or personal information.
     if (headless && process.env.PRISM_NATIVE_DEBUG === '1') child.stderr?.on('data', chunk => console.error(String(chunk)))
