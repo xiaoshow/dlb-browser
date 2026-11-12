@@ -103,10 +103,14 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
   const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[] | null>(null)
   const allTags = collectAllTags(state.profiles)
   const hasTag = (p: BrowserProfile, t: string) => [...splitTags(p.alias), ...splitTags(p.notes)].includes(t)
+  const isSearching = query.trim().length > 0
   const profiles = state.profiles.filter(p =>
-    (group ? p.groupId === group : (query.trim() || tagFilter || !state.groups.find(g => g.id === p.groupId)?.collapsed)) &&
-    (!tagFilter || hasTag(p, tagFilter)) &&
-    `${p.name} ${p.alias ?? ''} ${p.notes ?? ''}`.toLowerCase().includes(query.toLowerCase())
+    (isSearching
+      ? true
+      : (group ? p.groupId === group : (tagFilter || !state.groups.find(g => g.id === p.groupId)?.collapsed)) &&
+        (!tagFilter || hasTag(p, tagFilter))
+    ) &&
+    `${p.name} ${p.alias ?? ''} ${p.notes ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())
   )
   async function operate(p: BrowserProfile, stop = false) { setBusy(ids => [...ids,p.id]); try { if(stop) await onStop(p.id);else await onOpen(p) } finally {setBusy(ids => ids.filter(id=>id!==p.id))} }
   async function batch(stop:boolean) { for(const p of state.profiles.filter(p=>selected.includes(p.id))) await operate(p,stop) }
@@ -393,7 +397,18 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
           return <option key={t} value={t}>{t} ({cnt})</option>
         })}
       </select>
-      <label><Search size={19}/><input aria-label="搜索 Profile" placeholder="搜索环境名称、别名或备注" value={query} onChange={e=>{setQuery(e.target.value);setSelected([])}}/></label>
+      <label className="manager-search-box">
+        <Search size={19}/>
+        <input aria-label="搜索 Profile" placeholder="全局搜索全部环境（名称、标签或备注，跨所有分组）" value={query} onChange={e=>{setQuery(e.target.value);setSelected([])}}/>
+        {isSearching && (
+          <span className="global-search-badge" title="正在跨所有分组和标签搜索">
+            全局匹配 {profiles.length} 个
+          </span>
+        )}
+        {query && (
+          <button type="button" className="search-clear-btn" title="清空搜索" onClick={() => { setQuery(''); setSelected([]) }}>×</button>
+        )}
+      </label>
       <span className="mode-label"><Monitor size={16}/>Chrome 独立窗口</span>
     </div>
     {allTags.length > 0 && (
@@ -501,7 +516,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
               <div className="profile-group-inline-wrap">
                 <button
                   type="button"
-                  className="profile-group-inline-btn"
+                  className={`profile-group-inline-btn ${isSearching ? 'search-highlight-group' : ''}`}
                   title="点击快速切换所属分组"
                   onClick={(e) => {
                     e.stopPropagation()
