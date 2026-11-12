@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, session } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isIP } from 'node:net'
@@ -66,8 +66,41 @@ function nativeBrowsers() {
     id => stopXray(id),
     shared => {
       groupWorkspaceManager?.reloadSharedBookmarks(shared)
+    },
+    (id, instanceId, label) => {
+      if (!appStateCache?.profiles) return
+      const p = appStateCache.profiles.find((item: any) => item.id === id)
+      if (p && (p.bskInstanceId !== instanceId || p.bskLabel !== label)) {
+        p.bskInstanceId = instanceId
+        p.bskLabel = label
+        void saveState(appStateCache)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('state:updated', appStateCache)
+        }
+      }
     }
   )
+}
+
+async function readDiskBskMeta(profileId: string): Promise<{ instanceId?: string; label?: string }> {
+  const extStorageDir = join(app.getPath('userData'), 'native-profiles', profileId, 'Default/Local Extension Settings/kmdmgcehgmnhnnonjlbdcglgpggdhcll')
+  try {
+    const files = await readdir(extStorageDir)
+    let instanceId: string | undefined
+    let label: string | undefined
+    for (const f of files) {
+      if (!f.endsWith('.log') && !f.endsWith('.ldb')) continue
+      const buf = await readFile(join(extStorageDir, f))
+      const str = buf.toString('latin1')
+      const m = str.match(/bsk_instance_id[^a-f0-9]*([0-9a-f]{8})/)
+      if (m) instanceId = m[1]
+      const lm = str.match(/bh_label[^"]*"([^"]*)"/)
+      if (lm && lm[1]) label = lm[1]
+    }
+    return { instanceId, label }
+  } catch {
+    return {}
+  }
 }
 
 function runningIds() {
@@ -150,6 +183,14 @@ async function loadState(allowBackup = true): Promise<any> {
       delete profile.syncMuseAvatar
       delete profile.usageDisplay
       delete profile.frozenAt
+      if (!profile.bskInstanceId) {
+        const bsk = await readDiskBskMeta(profile.id)
+        if (bsk.instanceId) {
+          profile.bskInstanceId = bsk.instanceId
+          if (bsk.label) profile.bskLabel = bsk.label
+          migrated = true
+        }
+      }
     }
     const hasLegacyEncrypted = (state.proxies ?? []).some((proxy: any) =>
       ['password', 'shareUrl'].some((key) => typeof proxy?.[key] === 'string' && proxy[key].startsWith('enc:v1:'))

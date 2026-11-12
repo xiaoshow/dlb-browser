@@ -943,7 +943,7 @@ export class NativeBrowsers {
   private closing = new Map<string, Promise<void>>()
   private opening = new Map<string, Promise<void>>()
   private syncingLock = false
-  constructor(private root: string, private resources: string, private changed: () => void, private closed: (id: string) => void, private onNativeSharedBookmarksChanged?: (shared: SharedBookmarkNode[]) => void) {}
+  constructor(private root: string, private resources: string, private changed: () => void, private closed: (id: string) => void, private onNativeSharedBookmarksChanged?: (shared: SharedBookmarkNode[]) => void, private onBskMeta?: (id: string, instanceId: string, label: string) => void) {}
   get ids() { return [...this.running.keys()] }
   get size() { return this.running.size }
   has(id: string) { return this.running.has(id) }
@@ -1163,6 +1163,38 @@ export class NativeBrowsers {
           if ((type === 'service_worker' || type === 'background_page') && url.includes(BADGE_EXTENSION_ID)) {
             await pipe.send('Runtime.enable', {}, sid).catch(() => undefined)
             await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
+            return
+          }
+          // 为 BrowserSkill 扩展的 Service Worker 自动同步环境名称作为 bh_label（当未手动命名时），并回传 bsk_instance_id
+          if ((type === 'service_worker' || type === 'background_page') && url.includes(BROWSER_SKILL_EXTENSION_ID)) {
+            await pipe.send('Runtime.enable', {}, sid).catch(() => undefined)
+            await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
+            const defaultLabel = String(profile.name || `#${number}`).trim()
+            setTimeout(async () => {
+              try {
+                const res = await pipe.send('Runtime.evaluate', {
+                  expression: `new Promise(resolve => {
+                    chrome.storage.local.get(['bsk_instance_id', 'bh_label'], data => {
+                      const inst = data?.bsk_instance_id || '';
+                      let lbl = data?.bh_label || '';
+                      const desired = ${JSON.stringify(defaultLabel)};
+                      if (!lbl && desired) {
+                        lbl = desired;
+                        chrome.storage.local.set({ bh_label: desired }, () => resolve({ inst, lbl }));
+                      } else {
+                        resolve({ inst, lbl });
+                      }
+                    });
+                  })`,
+                  awaitPromise: true,
+                  returnByValue: true
+                }, sid)
+                const val = res?.result?.value
+                if (val?.inst) {
+                  this.onBskMeta?.(id, String(val.inst), String(val.lbl || defaultLabel))
+                }
+              } catch {}
+            }, 1200)
             return
           }
           // Native worker identity comes from process switches; resume immediately.

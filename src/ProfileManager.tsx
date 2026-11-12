@@ -160,6 +160,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
   const [editingProfileName, setEditingProfileName] = useState('')
   const [groupMenuProfileId, setGroupMenuProfileId] = useState<string | null>(null)
   const [tagColorMenu, setTagColorMenu] = useState<{ tag: string; x: number; y: number } | null>(null)
+  const [copiedBskId, setCopiedBskId] = useState<string | null>(null)
   const [moveTo, setMoveTo] = useState('')
   const [query, setQuery] = useState(''), [group, setGroup] = useState(''), [tagFilter, setTagFilter] = useState('')
   const [busy, setBusy] = useState<string[]>([]), [selected, setSelected] = useState<string[]>([])
@@ -174,7 +175,7 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
       : (group ? p.groupId === group : (tagFilter || !state.groups.find(g => g.id === p.groupId)?.collapsed)) &&
         (!tagFilter || hasTag(p, tagFilter))
     ) &&
-    `${p.name} ${p.alias ?? ''} ${p.notes ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())
+    `${p.name} ${p.alias ?? ''} ${p.notes ?? ''} ${p.bskInstanceId ?? ''} ${p.bskLabel ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())
   )
   async function operate(p: BrowserProfile, stop = false) { setBusy(ids => [...ids,p.id]); try { if(stop) await onStop(p.id);else await onOpen(p) } finally {setBusy(ids => ids.filter(id=>id!==p.id))} }
   async function batch(stop:boolean) { for(const p of state.profiles.filter(p=>selected.includes(p.id))) await operate(p,stop) }
@@ -591,6 +592,26 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
                   <span>{state.groups.find(g => g.id === p.groupId)?.name || '未分组'}</span>
                   <ChevronDown size={11} />
                 </button>
+                {p.bskInstanceId && (
+                  <button
+                    type="button"
+                    className={`bsk-instance-pill ${copiedBskId === p.id ? 'copied' : ''}`}
+                    title={`点击复制 BrowserSkill 完整指令 (Instance ID: ${p.bskInstanceId})；按住 ⌥ 点击仅复制 ID`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const inst = p.bskInstanceId!
+                      const bName = p.bskLabel || p.name || 'Unnamed browser'
+                      const text = e.altKey
+                        ? inst
+                        : `For this task, use BrowserSkill in browser "${bName}" (instance ID: ${inst}). Start every new session for this task with the appropriate interface:\nCLI: bsk session start --browser ${inst} --json\nDeepSeek Harness: bsk_session({ action: "start", browser: "${inst}" })\nIn DeepSeek Harness, use the tool call instead of running the CLI command separately.\nIf this instance is not connected, stop and ask me to reconnect this profile. Do not omit --browser / browser or switch to another instance.`
+                      void navigator.clipboard.writeText(text)
+                      setCopiedBskId(p.id)
+                      setTimeout(() => setCopiedBskId(cur => cur === p.id ? null : cur), 1600)
+                    }}
+                  >
+                    <span>🚀 {copiedBskId === p.id ? '已复制指令' : p.bskInstanceId}</span>
+                  </button>
+                )}
                 {p.notes ? <small className="profile-notes-inline"> · {p.notes}</small> : null}
                 {groupMenuProfileId === p.id && (
                   <div className="profile-group-popover" onClick={(e) => e.stopPropagation()}>

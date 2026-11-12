@@ -68,6 +68,8 @@ export interface BrowserProfile {
   accountNote?: string
   groupId: string
   pinned?: boolean
+  bskInstanceId?: string
+  bskLabel?: string
 }
 
 export interface ProfileGroup {
