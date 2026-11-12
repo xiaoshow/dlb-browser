@@ -612,7 +612,15 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
                     <span>🚀 {copiedBskId === p.id ? '已复制指令' : p.bskInstanceId}</span>
                   </button>
                 )}
-                {p.notes ? <small className="profile-notes-inline"> · {p.notes}</small> : null}
+                {p.notes ? (
+                  p.notes.includes('2FA') ? (
+                    <span className="profile-2fa-badge" title={p.notes}>
+                      🔐 2FA
+                    </span>
+                  ) : (
+                    <small className="profile-notes-inline"> · {p.notes}</small>
+                  )
+                ) : null}
                 {groupMenuProfileId === p.id && (
                   <div className="profile-group-popover" onClick={(e) => e.stopPropagation()}>
                     <div className="profile-group-popover-title">切换分组</div>
