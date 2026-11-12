@@ -612,7 +612,7 @@ export function GroupWorkspaceInner() {
   useEffect(() => {
     function handleClickOutside() {
       if (contextMenu.visible) {
-        setContextMenu({ visible: false, x: 0, y: 0, bookmark: null })
+        setContextMenu({ visible: false, x: 0, y: 0, bookmark: null, scope: 'shared' })
       }
     }
     window.addEventListener('click', handleClickOutside)
