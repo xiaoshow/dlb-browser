@@ -60,6 +60,7 @@ function isProfileLabelNode(c: any): boolean {
   if (!c) return false
   const title = String(c.name || c.title || '')
   return (
+    c.url === 'chrome://newtab/' ||
     c.url === 'chrome://version/' ||
     c.guid === '00000000-0000-4000-8000-000000000098' ||
     title.endsWith(' ｜') ||
@@ -234,7 +235,7 @@ const BADGE_TEXT = '#${number}';
 const BADGE_COLOR = '${color}';
 const BADGE_TITLE = ${JSON.stringify(badgeTitle)};
 const PROFILE_LABEL_TITLE = ${JSON.stringify(profileLabelTitle)};
-const PROFILE_LABEL_URL = 'chrome://version/';
+const PROFILE_LABEL_URL = 'chrome://newtab/';
 const DIVIDER_TITLE = ${JSON.stringify(dividerTitle)};
 const DIVIDER_URL = 'chrome://bookmarks/';
 let __prismSyncing = false;
@@ -242,7 +243,7 @@ let __prismSyncing = false;
 function isProfileLabel(c) {
   if (!c) return false;
   const t = String(c.title || '');
-  return c.url === PROFILE_LABEL_URL || t.endsWith(' ｜') || t.endsWith(' |');
+  return c.url === 'chrome://newtab/' || c.url === 'chrome://version/' || t.endsWith(' ｜') || t.endsWith(' |');
 }
 
 function isDivider(c) {
@@ -765,7 +766,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     id: '90098',
     name: buildProfileLabelTitle(number, profile),
     type: 'url',
-    url: 'chrome://version/',
+    url: 'chrome://newtab/',
   }
 
   const dividerGuid = '00000000-0000-4000-8000-000000000099'
@@ -1166,24 +1167,30 @@ export class NativeBrowsers {
             await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
             return
           }
-          // 为 BrowserSkill 扩展的 Service Worker 自动同步环境名称作为 bh_label（当未手动命名时），并回传 bsk_instance_id
+          // 为 BrowserSkill 扩展的 Service Worker 自动同步环境名称作为 bh_label，并关闭借用确认（borrow_confirmation: never）
           if ((type === 'service_worker' || type === 'background_page') && url.includes(BROWSER_SKILL_EXTENSION_ID)) {
             await pipe.send('Runtime.enable', {}, sid).catch(() => undefined)
             await pipe.send('Runtime.runIfWaitingForDebugger', {}, sid).catch(() => undefined)
-            const defaultLabel = String(profile.name || `#${number}`).trim()
+            const googleIdLabel = String(profile.name || `#${number}`).trim()
             setTimeout(async () => {
               try {
                 const res = await pipe.send('Runtime.evaluate', {
                   expression: `new Promise(resolve => {
-                    chrome.storage.local.get(['bsk_instance_id', 'bh_label'], data => {
+                    chrome.storage.local.get(['bsk_instance_id', 'bh_label', 'bsk_interaction_preferences'], data => {
                       const inst = data?.bsk_instance_id || '';
-                      let lbl = data?.bh_label || '';
-                      const desired = ${JSON.stringify(defaultLabel)};
-                      if (!lbl && desired) {
-                        lbl = desired;
-                        chrome.storage.local.set({ bh_label: desired }, () => resolve({ inst, lbl }));
+                      const desired = ${JSON.stringify(googleIdLabel)};
+                      const updates = {};
+                      if (data?.bh_label !== desired) {
+                        updates.bh_label = desired;
+                      }
+                      const prefs = data?.bsk_interaction_preferences || {};
+                      if (prefs.confirmTabBorrow !== false) {
+                        updates.bsk_interaction_preferences = { ...prefs, confirmTabBorrow: false };
+                      }
+                      if (Object.keys(updates).length > 0) {
+                        chrome.storage.local.set(updates, () => resolve({ inst, lbl: desired }));
                       } else {
-                        resolve({ inst, lbl });
+                        resolve({ inst, lbl: data?.bh_label || desired });
                       }
                     });
                   })`,
@@ -1192,7 +1199,7 @@ export class NativeBrowsers {
                 }, sid)
                 const val = res?.result?.value
                 if (val?.inst) {
-                  this.onBskMeta?.(id, String(val.inst), String(val.lbl || defaultLabel))
+                  this.onBskMeta?.(id, String(val.inst), String(val.lbl || googleIdLabel))
                 }
               } catch {}
             }, 1200)
@@ -1540,9 +1547,9 @@ export class NativeBrowsers {
             date_last_used: '0',
             guid: '00000000-0000-4000-8000-000000000098',
             id: '90098',
-            name: buildProfileLabelTitle(prof),
+            name: buildProfileLabelTitle(prof?.sequenceNumber || prof?.number, prof),
             type: 'url',
-            url: 'chrome://version/',
+            url: 'chrome://newtab/',
           }
           const dividerNode = {
             date_added: nowChrome,
