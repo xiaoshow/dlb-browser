@@ -169,13 +169,17 @@ export function ProfileManager({ state, onOrganize, running, onOpen, onStop, onE
   const allTags = collectAllTags(state.profiles)
   const hasTag = (p: BrowserProfile, t: string) => [...splitTags(p.alias), ...splitTags(p.notes)].includes(t)
   const isSearching = query.trim().length > 0
+  const normalizedQuery = query.trim().toLowerCase().replace(/@(gmail\.com|gmailc\.om|googlemail\.com)$/i, '').trim()
   const profiles = state.profiles.filter(p =>
     (isSearching
       ? true
       : (group ? p.groupId === group : (tagFilter || !state.groups.find(g => g.id === p.groupId)?.collapsed)) &&
         (!tagFilter || hasTag(p, tagFilter))
     ) &&
-    `${p.name} ${p.alias ?? ''} ${p.notes ?? ''} ${p.bskInstanceId ?? ''} ${p.bskLabel ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())
+    (
+      `${p.name} ${p.alias ?? ''} ${p.notes ?? ''} ${p.bskInstanceId ?? ''} ${p.bskLabel ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()) ||
+      (normalizedQuery.length > 0 && `${p.name} ${p.alias ?? ''} ${p.notes ?? ''} ${p.bskInstanceId ?? ''} ${p.bskLabel ?? ''}`.toLowerCase().includes(normalizedQuery))
+    )
   )
   async function operate(p: BrowserProfile, stop = false) { setBusy(ids => [...ids,p.id]); try { if(stop) await onStop(p.id);else await onOpen(p) } finally {setBusy(ids => ids.filter(id=>id!==p.id))} }
   async function batch(stop:boolean) { for(const p of state.profiles.filter(p=>selected.includes(p.id))) await operate(p,stop) }
