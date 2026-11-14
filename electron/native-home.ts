@@ -1,15 +1,12 @@
 export function nativeHome(profile: any, number: number, proxy: any, location: any, version: string) {
   const escape = (value: unknown) => String(value ?? '未检测').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))
   const tz = profile.timezone === 'local' ? 'System' : (location?.timezone || profile.timezone || 'Auto')
-  const locText = location ? `${location.country}${location.city ? ` / ${location.city}` : ''}` : 'Direct / System Network'
-  const latLon = location && typeof location.latitude === 'number' && typeof location.longitude === 'number'
-    ? `${location.latitude.toFixed(3)}, ${location.longitude.toFixed(3)}`
-    : (profile.fingerprint?.geolocation ? `${profile.fingerprint.geolocation.latitude}, ${profile.fingerprint.geolocation.longitude}` : 'Auto')
+  const locText = location ? `${location.country}${location.city ? ` / ${location.city}` : ''}` : 'Direct / System'
   const proxyLabel = !proxy || proxy.kind === 'direct'
-    ? 'Direct (No Proxy)'
+    ? 'Direct'
     : proxy.kind === 'system'
-      ? 'System Proxy (跟随系统代理)'
-      : `${proxy.name} · ${proxy.kind.toUpperCase()}${proxy.host ? ` (${proxy.host}:${proxy.port})` : ''}`
+      ? 'System Proxy'
+      : `${proxy.name} (${proxy.kind.toUpperCase()})`
   const aliasText = (profile.alias || '').trim()
   const tags: string[] = Array.from(new Set(aliasText.split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => Boolean(t))))
   const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -35,12 +32,6 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
         return `<span class="notion-tag-pill" style="background:${c.bg};color:${c.text};border-color:${c.border};">${escape(t)}</span>`
       }).join('')}</div>`
     : ''
-
-  const basicRows: [string, string][] = [
-    ['环境名称', profile.name],
-    ['标签用途', tags.length ? tags.join(', ') : '—'],
-    ['出海代理', proxyLabel],
-  ]
 
   const wallpapers = [
     "official_mv_img1.jpg",
@@ -94,9 +85,9 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
 *{box-sizing:border-box}
 body{
   margin:0;
-  padding:24px 20px;
+  padding:24px;
   min-height:100vh;
-  font:13.5px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+  font:13px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
   color:#0f172a;
   -webkit-font-smoothing:antialiased;
   background-color:#0f172a;
@@ -107,69 +98,55 @@ body{
   transition:background-image 0.5s ease-in-out;
   display:flex;
   flex-direction:column;
-  align-items:center;
-  justify-content:center;
+  align-items:flex-start;
+  justify-content:flex-end;
 }
 main{
   position:relative;
   z-index:1;
-  width:100%;
-  max-width:560px;
-  margin:0 auto;
-  background:rgba(255,255,255,0.42);
-  backdrop-filter:blur(24px) saturate(180%);
-  -webkit-backdrop-filter:blur(24px) saturate(180%);
-  padding:20px 24px;
-  border-radius:20px;
-  box-shadow:0 12px 32px rgba(0,0,0,0.18), 0 1px 2px rgba(255,255,255,0.6) inset;
-  border:1.5px solid rgba(255,255,255,0.6);
+  background:rgba(255,255,255,0.22);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  padding:14px 18px;
+  border-radius:14px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.18), 0 1px 1px rgba(255,255,255,0.4) inset;
+  border:1px solid rgba(255,255,255,0.4);
+  max-width:480px;
 }
-.top-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.ip-block{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.profile-badge{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 13px;border-radius:8px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:18px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums;box-shadow:0 3px 10px rgba(220,38,38,.28)}
-.tags-row{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
-.notion-tag-pill{display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:5px;font-size:12px;font-weight:700;border:1px solid;letter-spacing:-.01em;user-select:none;backdrop-filter:blur(6px)}
-h1{color:#1d4ed8;font-size:28px;font-weight:900;letter-spacing:-.03em;margin:0;line-height:1.1;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(255,255,255,0.8)}
-time{color:#b91c1c;font:800 15px/1.2 "SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;background:rgba(254,242,242,0.7);padding:5px 10px;border-radius:7px;border:1px solid rgba(254,202,202,0.8);backdrop-filter:blur(6px)}
-.meta-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 14px;padding:9px 12px;background:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.6);border-radius:10px;font-size:12px;color:#334155;backdrop-filter:blur(8px)}
-.meta-strip strong{color:#0f172a;font-weight:700;margin-left:3px}
-.info-list{display:grid;gap:3px}
-.info-row{display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;padding:6px 12px;border-radius:7px;font-size:13px}
-.info-row:nth-child(odd){background:rgba(255,255,255,0.35)}
-.info-label{color:#475569;font-weight:600}
-.info-value{color:#0f172a;font-weight:600;overflow-wrap:anywhere}
+.header-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.profile-badge{display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 10px;border-radius:6px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:14px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums;box-shadow:0 2px 6px rgba(220,38,38,.28)}
+.tags-row{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.notion-tag-pill{display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:4px;font-size:11.5px;font-weight:700;border:1px solid;letter-spacing:-.01em;user-select:none;backdrop-filter:blur(6px)}
+.ip-text{color:#1d4ed8;font-size:20px;font-weight:900;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(255,255,255,0.8);margin-left:auto}
+time{color:#b91c1c;font:800 13px/1.2 "SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;background:rgba(254,242,242,0.65);padding:3px 7px;border-radius:5px;border:1px solid rgba(254,202,202,0.7);backdrop-filter:blur(4px)}
+.details{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:12.5px;color:#1e293b;font-weight:600;padding-top:6px;border-top:1px solid rgba(255,255,255,0.35)}
+.details div span{color:#475569;font-weight:500;margin-right:3px}
 .wallpaper-credit{
   position:fixed;
-  bottom:12px;
-  right:16px;
+  bottom:16px;
+  right:20px;
   z-index:2;
-  font-size:12px;
+  font-size:11.5px;
   font-weight:700;
   color:rgba(255,255,255,0.9);
-  background:rgba(0,0,0,0.4);
-  padding:4px 12px;
-  border-radius:8px;
-  backdrop-filter:blur(8px);
+  background:rgba(0,0,0,0.38);
+  padding:3px 10px;
+  border-radius:6px;
+  backdrop-filter:blur(6px);
   user-select:none;
-  border:1px solid rgba(255,255,255,0.25);
-  box-shadow:0 3px 10px rgba(0,0,0,0.2);
+  border:1px solid rgba(255,255,255,0.2);
 }
 </style><main>
-  <div class="top-bar">
-    <div class="ip-block">
-      <span class="profile-badge">#${number}</span>
-      ${tagsHtml}
-      <h1>${escape(location?.ip || '出口 IP 未检测')}</h1>
-    </div>
+  <div class="header-row">
+    <span class="profile-badge">#${number}</span>
+    ${tagsHtml}
     <time id="clock">--:--:--</time>
+    <div class="ip-text">${escape(location?.ip || '出口 IP 未检测')}</div>
   </div>
-  <div class="meta-strip">
-    <div>位置: <strong>${escape(locText)}</strong></div>
-    <div>经纬: <strong>${escape(latLon)}</strong></div>
-    <div>时区: <strong>${escape(tz)}</strong></div>
-  </div>
-  <div class="info-list">
-    ${basicRows.map(([k, v]) => `<div class="info-row"><span class="info-label">${escape(k)}</span><span class="info-value">${escape(v)}</span></div>`).join('')}
+  <div class="details">
+    <div><span>账号:</span><strong>${escape(profile.name)}</strong></div>
+    <div><span>位置:</span><strong>${escape(locText)}</strong></div>
+    <div><span>代理:</span><strong>${escape(proxyLabel)}</strong></div>
   </div>
 </main>
 <div class="wallpaper-credit" id="wallpaperTitle">らんま1/2 · 4K</div>
@@ -187,7 +164,7 @@ if (titleElem) {
 function pad(n){return String(n).padStart(2,'0')}
 function tick(){
   var d = new Date();
-  document.getElementById('clock').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+' '+pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();
+  document.getElementById('clock').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
 }
 var clockTimer;
 function updateClockActivity(){
