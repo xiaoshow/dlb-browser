@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
-import { access, mkdir, readFile, writeFile, rename, rm, chmod, copyFile, stat, readdir } from 'node:fs/promises'
+import { access, mkdir, readFile, writeFile, rename, rm, chmod, copyFile, stat, readdir, symlink, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ChromePipe } from './chrome-pipe.js'
@@ -882,6 +882,34 @@ INSERT OR IGNORE INTO meta (key, value) SELECT key, value FROM master.meta;
   })
 }
 
+async function ensureProfileWallpapers(directory: string, resourcesDir: string, rootDir: string): Promise<void> {
+  const possibleSources = [
+    join(rootDir, 'wallpapers'),
+    join(resourcesDir, 'ranma-wallpapers'),
+    join(resourcesDir, 'wallpapers'),
+  ]
+  let sourceDir = ''
+  for (const p of possibleSources) {
+    if (await access(p).then(() => true).catch(() => false)) {
+      sourceDir = p
+      break
+    }
+  }
+  if (!sourceDir) return
+  const files = await readdir(sourceDir).catch(() => [] as string[])
+  for (const f of files) {
+    if (!f.endsWith('.jpg') && !f.endsWith('.png')) continue
+    const src = join(sourceDir, f)
+    const dst = join(directory, f)
+    const exists = await access(dst).then(() => true).catch(() => false)
+    if (!exists) {
+      await symlink(src, dst).catch(async () => {
+        await copyFile(src, dst).catch(() => undefined)
+      })
+    }
+  }
+}
+
 async function ensureProfileSearchEngine(defaultDir: string): Promise<void> {
   const targetDb = join(defaultDir, 'Web Data')
   // 关键保护：如果 Web Data 尚未由 Chromium 创建并完成 schema 初始化（包含 autofill 表及 meta.version），
@@ -1006,6 +1034,7 @@ export class NativeBrowsers {
     await ensureProfilePreferences(directory, profile, number, homepageUrl, proxy)
     await ensureProfileFavicons(join(directory, 'Default'), this.resources, this.root)
     await ensureProfileSearchEngine(join(directory, 'Default'))
+    await ensureProfileWallpapers(directory, this.resources, this.root)
     const args = [
       `--user-data-dir=${directory}`,
       '--remote-debugging-pipe',
