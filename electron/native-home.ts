@@ -1,6 +1,5 @@
 export function nativeHome(profile: any, number: number, proxy: any, location: any, version: string) {
   const escape = (value: unknown) => String(value ?? '未检测').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))
-  const kernelNum = version.match(/\/(\d+)/)?.[1] || version
   const tz = profile.timezone === 'local' ? 'System' : (location?.timezone || profile.timezone || 'Auto')
   const locText = location ? `${location.country}${location.city ? ` / ${location.city}` : ''}` : 'Direct / System Network'
   const latLon = location && typeof location.latitude === 'number' && typeof location.longitude === 'number'
@@ -9,20 +8,20 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
   const proxyLabel = !proxy || proxy.kind === 'direct'
     ? 'Direct (No Proxy)'
     : proxy.kind === 'system'
-      ? 'System Proxy (跟随本机系统代理)'
+      ? 'System Proxy (跟随系统代理)'
       : `${proxy.name} · ${proxy.kind.toUpperCase()}${proxy.host ? ` (${proxy.host}:${proxy.port})` : ''}`
   const aliasText = (profile.alias || '').trim()
   const tags: string[] = Array.from(new Set(aliasText.split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => Boolean(t))))
   const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-    gray: { bg: '#e3e2e0', text: '#32302c', border: '#d5d4d2' },
-    brown: { bg: '#eee0da', text: '#442a1e', border: '#e2cfc7' },
-    orange: { bg: '#fadec9', text: '#49290e', border: '#f5cca9' },
-    yellow: { bg: '#fdecc8', text: '#402c1b', border: '#fbe2a3' },
-    green: { bg: '#dbeddb', text: '#1c3829', border: '#c3e1c3' },
-    blue: { bg: '#d3e5ef', text: '#183347', border: '#b7d5e6' },
-    purple: { bg: '#e8deee', text: '#412454', border: '#dacae3' },
-    pink: { bg: '#f5e0e9', text: '#4c2337', border: '#ecccdb' },
-    red: { bg: '#ffe2dd', text: '#5d1715', border: '#fad0c8' },
+    gray: { bg: 'rgba(227,226,224,0.7)', text: '#1e293b', border: 'rgba(213,212,210,0.8)' },
+    brown: { bg: 'rgba(238,224,218,0.7)', text: '#442a1e', border: 'rgba(226,207,199,0.8)' },
+    orange: { bg: 'rgba(250,222,201,0.7)', text: '#49290e', border: 'rgba(245,204,169,0.8)' },
+    yellow: { bg: 'rgba(253,236,200,0.7)', text: '#402c1b', border: 'rgba(251,226,163,0.8)' },
+    green: { bg: 'rgba(219,237,219,0.7)', text: '#1c3829', border: 'rgba(195,225,195,0.8)' },
+    blue: { bg: 'rgba(211,229,239,0.7)', text: '#183347', border: 'rgba(183,213,230,0.8)' },
+    purple: { bg: 'rgba(232,222,238,0.7)', text: '#412454', border: 'rgba(218,202,227,0.8)' },
+    pink: { bg: 'rgba(245,224,233,0.7)', text: '#4c2337', border: 'rgba(236,204,219,0.8)' },
+    red: { bg: 'rgba(255,226,221,0.7)', text: '#5d1715', border: 'rgba(250,208,200,0.8)' },
   }
   const COLOR_KEYS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red']
   const tagColor = (t: string) => {
@@ -36,19 +35,11 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
         return `<span class="notion-tag-pill" style="background:${c.bg};color:${c.text};border-color:${c.border};">${escape(t)}</span>`
       }).join('')}</div>`
     : ''
-  const basicRows = [
-    ['Profile ID', `#${number}`],
-    ['Tags / 标签用途', tags.length ? tags.join(', ') : '— (可在主面板「别名 / 用途」列直接添加 Notion 标签)'],
-    ['Name', profile.name],
-    ['Proxy', proxyLabel],
-    ['Notes', profile.notes?.trim() || '—'],
-  ]
-  const envRows = [
-    ['Kernel Version', `${kernelNum} (${version})`],
-    ['Fingerprint Mode', 'Smart · C++ Kernel Seed + Worker Isolation'],
-    ['Sync Data', 'Cookies, Bookmarks Bar, Extensions & LocalStorage'],
-    ['Operating System', 'macOS (Apple Silicon ARM64)'],
-    ['Language', profile.locale || 'en-US'],
+
+  const basicRows: [string, string][] = [
+    ['环境名称', profile.name],
+    ['标签用途', tags.length ? tags.join(', ') : '—'],
+    ['出海代理', proxyLabel],
   ]
 
   const wallpapers = [
@@ -103,10 +94,10 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
 *{box-sizing:border-box}
 body{
   margin:0;
-  padding:36px 20px;
+  padding:24px 20px;
   min-height:100vh;
-  font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
-  color:#1e293b;
+  font:13.5px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+  color:#0f172a;
   -webkit-font-smoothing:antialiased;
   background-color:#0f172a;
   background-size:cover;
@@ -119,70 +110,51 @@ body{
   align-items:center;
   justify-content:center;
 }
-.bg-overlay{
-  position:fixed;
-  top:0;left:0;right:0;bottom:0;
-  background:rgba(15,23,42,0.38);
-  backdrop-filter:blur(3px);
-  -webkit-backdrop-filter:blur(3px);
-  z-index:0;
-}
 main{
   position:relative;
   z-index:1;
   width:100%;
-  max-width:820px;
+  max-width:560px;
   margin:0 auto;
-  background:rgba(255,255,255,0.92);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  padding:34px 40px 38px;
+  background:rgba(255,255,255,0.42);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  padding:20px 24px;
   border-radius:20px;
-  box-shadow:0 20px 50px rgba(0,0,0,0.35),0 2px 6px rgba(0,0,0,0.1);
-  border:1px solid rgba(255,255,255,0.6);
+  box-shadow:0 12px 32px rgba(0,0,0,0.18), 0 1px 2px rgba(255,255,255,0.6) inset;
+  border:1.5px solid rgba(255,255,255,0.6);
 }
-.top-bar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
-.ip-block{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.profile-badge{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 16px;border-radius:10px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:20px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(220,38,38,.28)}
-.tags-row{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
-.notion-tag-pill{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:6px;font-size:13px;font-weight:600;border:1px solid;letter-spacing:-.01em;user-select:none}
-.alias-badge{display:inline-flex;align-items:center;height:36px;padding:0 13px;border-radius:9px;background:#fef2f2;border:1.5px solid #fecaca;color:#dc2626;font-size:14px;font-weight:700}
-h1{color:#2563eb;font-size:36px;font-weight:800;letter-spacing:-.03em;margin:0;line-height:1.1;font-variant-numeric:tabular-nums}
-time{color:#dc2626;font:700 18px/1.2 "SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;background:rgba(254,242,242,0.9);padding:7px 12px;border-radius:8px;border:1px solid #fecaca}
-.meta-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0 24px;padding:13px 16px;background:rgba(248,250,252,0.85);border:1px solid #eef2f6;border-radius:11px;font-size:13px;color:#64748b}
-.meta-strip strong{color:#0f172a;font-weight:600;margin-left:4px}
-.section-title{font-size:13px;font-weight:700;color:#0f172a;margin:22px 0 10px;padding-top:18px;border-top:1px solid #eef2f6;display:flex;align-items:center;justify-content:space-between}
-.section-title:first-of-type{border-top:0;padding-top:4px;margin-top:0}
-.info-list{display:grid;gap:4px}
-.info-row{display:grid;grid-template-columns:160px minmax(0,1fr);align-items:center;padding:10px 14px;border-radius:8px;font-size:13.5px}
-.info-row:nth-child(odd){background:rgba(248,250,252,0.75)}
-.info-label{color:#64748b;font-weight:500}
-.info-value{color:#0f172a;font-weight:500;overflow-wrap:anywhere}
-.tools{display:inline-flex;flex-wrap:wrap;gap:14px}
-.tools a{display:inline-flex;align-items:center;gap:6px;color:#2563eb;text-decoration:none;font-weight:600;padding:3px 9px;border-radius:6px;background:#eff6ff;transition:background .15s}
-.tools a:hover{background:#dbeafe;text-decoration:underline}
-.tools i{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;font-style:normal;font-size:10px;font-weight:800;color:#fff}
-.tools .t-ping0{background:#059669}
-.tools .t-creep{background:#e11d48}
-.tools .t-leaks{background:#475569}
-.tools .t-ip{background:#0284c7}
-.tools .t-pixel{background:#7c3aed}
+.top-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ip-block{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.profile-badge{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 13px;border-radius:8px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:18px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums;box-shadow:0 3px 10px rgba(220,38,38,.28)}
+.tags-row{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
+.notion-tag-pill{display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:5px;font-size:12px;font-weight:700;border:1px solid;letter-spacing:-.01em;user-select:none;backdrop-filter:blur(6px)}
+h1{color:#1d4ed8;font-size:28px;font-weight:900;letter-spacing:-.03em;margin:0;line-height:1.1;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(255,255,255,0.8)}
+time{color:#b91c1c;font:800 15px/1.2 "SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;background:rgba(254,242,242,0.7);padding:5px 10px;border-radius:7px;border:1px solid rgba(254,202,202,0.8);backdrop-filter:blur(6px)}
+.meta-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 14px;padding:9px 12px;background:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.6);border-radius:10px;font-size:12px;color:#334155;backdrop-filter:blur(8px)}
+.meta-strip strong{color:#0f172a;font-weight:700;margin-left:3px}
+.info-list{display:grid;gap:3px}
+.info-row{display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;padding:6px 12px;border-radius:7px;font-size:13px}
+.info-row:nth-child(odd){background:rgba(255,255,255,0.35)}
+.info-label{color:#475569;font-weight:600}
+.info-value{color:#0f172a;font-weight:600;overflow-wrap:anywhere}
 .wallpaper-credit{
   position:fixed;
   bottom:12px;
   right:16px;
   z-index:2;
   font-size:12px;
-  font-weight:600;
-  color:rgba(255,255,255,0.75);
+  font-weight:700;
+  color:rgba(255,255,255,0.9);
   background:rgba(0,0,0,0.4);
-  padding:4px 10px;
-  border-radius:6px;
-  backdrop-filter:blur(4px);
+  padding:4px 12px;
+  border-radius:8px;
+  backdrop-filter:blur(8px);
   user-select:none;
-  letter-spacing:0.02em;
+  border:1px solid rgba(255,255,255,0.25);
+  box-shadow:0 3px 10px rgba(0,0,0,0.2);
 }
-</style><div class="bg-overlay"></div><main>
+</style><main>
   <div class="top-bar">
     <div class="ip-block">
       <span class="profile-badge">#${number}</span>
@@ -192,34 +164,16 @@ time{color:#dc2626;font:700 18px/1.2 "SF Mono",ui-monospace,SFMono-Regular,Menlo
     <time id="clock">--:--:--</time>
   </div>
   <div class="meta-strip">
-    <div>Location: <strong>${escape(locText)}</strong></div>
-    <div>Lat/Lon: <strong>${escape(latLon)}</strong></div>
-    <div>Timezone: <strong>${escape(tz)}</strong></div>
+    <div>位置: <strong>${escape(locText)}</strong></div>
+    <div>经纬: <strong>${escape(latLon)}</strong></div>
+    <div>时区: <strong>${escape(tz)}</strong></div>
   </div>
-  <div class="section-title"><span>Basic Information</span></div>
   <div class="info-list">
     ${basicRows.map(([k, v]) => `<div class="info-row"><span class="info-label">${escape(k)}</span><span class="info-value">${escape(v)}</span></div>`).join('')}
-  </div>
-  <div class="section-title"><span>Environment Information</span></div>
-  <div class="info-list">
-    <div class="info-row">
-      <span class="info-label">Testing Tool</span>
-      <span class="info-value tools">
-        <a href="https://ip.ping0.cc/"><i class="t-ping0">P0</i>ping0.cc</a>
-        <a href="https://abrahamjuliot.github.io/creepjs/"><i class="t-creep">C</i>CreepJS</a>
-        <a href="https://browserleaks.com/"><i class="t-leaks">B</i>BrowserLeaks</a>
-        <a href="https://ipinfo.io/"><i class="t-ip">IP</i>IPInfo</a>
-        <a href="https://pixelscan.net/"><i class="t-pixel">P</i>Pixelscan</a>
-      </span>
-    </div>
-    ${envRows.map(([k, v]) => `<div class="info-row"><span class="info-label">${escape(k)}</span><span class="info-value">${escape(v)}</span></div>`).join('')}
-    <div class="info-row"><span class="info-label">UserAgent</span><span class="info-value" id="observed"></span></div>
   </div>
 </main>
 <div class="wallpaper-credit" id="wallpaperTitle">らんま1/2 · 4K</div>
 <script>
-document.getElementById('observed').textContent = navigator.userAgent;
-
 var wallpapers = ${wallpapersJson};
 var chosen = wallpapers[Math.floor(Math.random() * wallpapers.length)];
 document.body.style.backgroundImage = 'url("' + encodeURI(chosen) + '")';
