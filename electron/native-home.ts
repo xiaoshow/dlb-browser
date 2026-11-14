@@ -1,12 +1,12 @@
 export function nativeHome(profile: any, number: number, proxy: any, location: any, version: string) {
   const escape = (value: unknown) => String(value ?? '未检测').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))
   const tz = profile.timezone === 'local' ? 'System' : (location?.timezone || profile.timezone || 'Auto')
-  const locText = location ? `${location.country}${location.city ? ` / ${location.city}` : ''}` : 'Direct / System'
+  const locText = location ? `${location.country}${location.city ? ` / ${location.city}` : ''}` : 'Direct / System Network'
   const proxyLabel = !proxy || proxy.kind === 'direct'
-    ? 'Direct'
+    ? 'Direct (No Proxy)'
     : proxy.kind === 'system'
-      ? 'System Proxy'
-      : `${proxy.name} (${proxy.kind.toUpperCase()})`
+      ? 'System Proxy (跟随系统代理)'
+      : `${proxy.name} · ${proxy.kind.toUpperCase()}${proxy.host ? ` (${proxy.host}:${proxy.port})` : ''}`
   const aliasText = (profile.alias || '').trim()
   const tags: string[] = Array.from(new Set(aliasText.split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => Boolean(t))))
   const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -32,6 +32,13 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
         return `<span class="notion-tag-pill" style="background:${c.bg};color:${c.text};border-color:${c.border};">${escape(t)}</span>`
       }).join('')}</div>`
     : ''
+
+  const basicRows: [string, string][] = [
+    ['Profile ID', `#${number}`],
+    ['Tags / 标签用途', tags.length ? tags.join(', ') : '—'],
+    ['Name', profile.name],
+    ['Proxy', proxyLabel],
+  ]
 
   const wallpapers = [
     "official_mv_img1.jpg",
@@ -74,7 +81,7 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
     "still_ep06_07_00-13-10.000_黑发红缎带少女_樱花特写.jpg",
     "still_ep06_08_00-15-39.950_女乱马_白蕾丝上衣定妆.jpg",
     "still_ep06_09_00-16-52.100_女乱马_校服店内.jpg",
-    "still_ep06_10_00-16-57.250_久遠寺右京_お好み焼き店烹饪.jpg",
+    "still_ep06_10_00-16-57.250_久远寺右京_お好み焼き店烹饪.jpg",
     "still_ep06_11_00-18-41.584_女性主持人_舞台西装.jpg",
     "still_ep06_12_00-26-37.750_女乱马_街头冰淇淋.jpg",
     "still_ep06_13_00-28-15.717_天道茜_日落片尾定妆.jpg"
@@ -85,9 +92,9 @@ export function nativeHome(profile: any, number: number, proxy: any, location: a
 *{box-sizing:border-box}
 body{
   margin:0;
-  padding:24px;
+  padding:28px 20px;
   min-height:100vh;
-  font:13px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+  font:13.5px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
   color:#0f172a;
   -webkit-font-smoothing:antialiased;
   background-color:#0f172a;
@@ -98,58 +105,187 @@ body{
   transition:background-image 0.5s ease-in-out;
   display:flex;
   flex-direction:column;
-  align-items:flex-start;
-  justify-content:flex-end;
+  align-items:center;
+  justify-content:center;
 }
 main{
   position:relative;
   z-index:1;
-  background:rgba(255,255,255,0.22);
-  backdrop-filter:blur(20px) saturate(180%);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
-  padding:14px 18px;
-  border-radius:14px;
-  box-shadow:0 8px 24px rgba(0,0,0,0.18), 0 1px 1px rgba(255,255,255,0.4) inset;
-  border:1px solid rgba(255,255,255,0.4);
-  max-width:480px;
+  width:100%;
+  max-width:700px;
+  margin:0 auto;
+  background:rgba(255,255,255,0.28);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  padding:22px 28px 24px;
+  border-radius:20px;
+  box-shadow:0 16px 40px rgba(0,0,0,0.22), 0 1px 2px rgba(255,255,255,0.5) inset;
+  border:1.5px solid rgba(255,255,255,0.45);
+  transition:all 0.3s ease-in-out;
 }
-.header-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
-.profile-badge{display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 10px;border-radius:6px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:14px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums;box-shadow:0 2px 6px rgba(220,38,38,.28)}
-.tags-row{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
-.notion-tag-pill{display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:4px;font-size:11.5px;font-weight:700;border:1px solid;letter-spacing:-.01em;user-select:none;backdrop-filter:blur(6px)}
-.ip-text{color:#1d4ed8;font-size:20px;font-weight:900;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(255,255,255,0.8);margin-left:auto}
-time{color:#b91c1c;font:800 13px/1.2 "SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;background:rgba(254,242,242,0.65);padding:3px 7px;border-radius:5px;border:1px solid rgba(254,202,202,0.7);backdrop-filter:blur(4px)}
-.details{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:12.5px;color:#1e293b;font-weight:600;padding-top:6px;border-top:1px solid rgba(255,255,255,0.35)}
-.details div span{color:#475569;font-weight:500;margin-right:3px}
-.wallpaper-credit{
+main.collapsed{
+  max-width:540px;
+  padding:14px 20px;
+}
+.top-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ip-block{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.profile-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:34px;
+  padding:0 13px;
+  border-radius:8px;
+  background:linear-gradient(135deg,#ef4444,#dc2626);
+  color:#fff;
+  font-size:17px;
+  font-weight:900;
+  letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;
+  box-shadow:0 3px 10px rgba(220,38,38,.28);
+}
+.tags-row{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
+.notion-tag-pill{
+  display:inline-flex;
+  align-items:center;
+  height:24px;
+  padding:0 8px;
+  border-radius:5px;
+  font-size:12px;
+  font-weight:700;
+  border:1px solid;
+  letter-spacing:-.01em;
+  user-select:none;
+  backdrop-filter:blur(6px);
+}
+h1{
+  color:#1d4ed8;
+  font-size:30px;
+  font-weight:900;
+  letter-spacing:-.03em;
+  margin:0;
+  line-height:1.1;
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 1px 2px rgba(255,255,255,0.8);
+}
+time{
+  color:#b91c1c;
+  font:800 15px/1.2 "SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.02em;
+  background:rgba(254,242,242,0.65);
+  padding:5px 10px;
+  border-radius:7px;
+  border:1px solid rgba(254,202,202,0.8);
+  backdrop-filter:blur(6px);
+}
+.meta-strip{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin:12px 0 14px;
+  padding:9px 14px;
+  background:rgba(255,255,255,0.35);
+  border:1px solid rgba(255,255,255,0.5);
+  border-radius:10px;
+  font-size:12.5px;
+  color:#334155;
+  backdrop-filter:blur(8px);
+}
+.meta-strip strong{color:#0f172a;font-weight:700;margin-left:4px}
+.section-title{
+  font-size:12.5px;
+  font-weight:800;
+  color:#0f172a;
+  margin:12px 0 8px;
+  letter-spacing:0.02em;
+}
+.info-list{display:grid;gap:4px}
+.info-row{
+  display:grid;
+  grid-template-columns:140px minmax(0,1fr);
+  align-items:center;
+  padding:7px 12px;
+  border-radius:7px;
+  font-size:13px;
+}
+.info-row:nth-child(odd){background:rgba(255,255,255,0.3)}
+.info-label{color:#475569;font-weight:600}
+.info-value{color:#0f172a;font-weight:600;overflow-wrap:anywhere}
+
+.collapsible-content{
+  transition:all 0.25s ease-in-out;
+}
+main.collapsed .collapsible-content{
+  display:none;
+}
+
+.bottom-bar{
   position:fixed;
   bottom:16px;
   right:20px;
   z-index:2;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.btn-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:12px;
+  font-weight:700;
+  color:rgba(255,255,255,0.95);
+  background:rgba(0,0,0,0.45);
+  padding:5px 12px;
+  border-radius:8px;
+  backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,0.3);
+  cursor:pointer;
+  user-select:none;
+  transition:all 0.15s ease-in-out;
+}
+.btn-toggle:hover{
+  background:rgba(0,0,0,0.65);
+  transform:scale(1.03);
+}
+.wallpaper-credit{
   font-size:11.5px;
   font-weight:700;
   color:rgba(255,255,255,0.9);
-  background:rgba(0,0,0,0.38);
-  padding:3px 10px;
-  border-radius:6px;
-  backdrop-filter:blur(6px);
+  background:rgba(0,0,0,0.4);
+  padding:5px 12px;
+  border-radius:8px;
+  backdrop-filter:blur(8px);
   user-select:none;
-  border:1px solid rgba(255,255,255,0.2);
+  border:1px solid rgba(255,255,255,0.25);
+  box-shadow:0 3px 10px rgba(0,0,0,0.2);
 }
-</style><main>
-  <div class="header-row">
-    <span class="profile-badge">#${number}</span>
-    ${tagsHtml}
+</style><main id="mainCard">
+  <div class="top-bar">
+    <div class="ip-block">
+      <span class="profile-badge">#${number}</span>
+      ${tagsHtml}
+      <h1>${escape(location?.ip || '出口 IP 未检测')}</h1>
+    </div>
     <time id="clock">--:--:--</time>
-    <div class="ip-text">${escape(location?.ip || '出口 IP 未检测')}</div>
   </div>
-  <div class="details">
-    <div><span>账号:</span><strong>${escape(profile.name)}</strong></div>
-    <div><span>位置:</span><strong>${escape(locText)}</strong></div>
-    <div><span>代理:</span><strong>${escape(proxyLabel)}</strong></div>
+  <div class="collapsible-content">
+    <div class="meta-strip">
+      <div>Location: <strong>${escape(locText)}</strong></div>
+      <div>Timezone: <strong>${escape(tz)}</strong></div>
+    </div>
+    <div class="section-title"><span>Basic Information</span></div>
+    <div class="info-list">
+      ${basicRows.map(([k, v]) => `<div class="info-row"><span class="info-label">${escape(k)}</span><span class="info-value">${escape(v)}</span></div>`).join('')}
+    </div>
   </div>
 </main>
-<div class="wallpaper-credit" id="wallpaperTitle">らんま1/2 · 4K</div>
+<div class="bottom-bar">
+  <button class="btn-toggle" id="toggleBtn" onclick="toggleCollapse()">
+    <span id="toggleIcon">👁</span> <span id="toggleText">只看乱马</span>
+  </button>
+  <div class="wallpaper-credit" id="wallpaperTitle">らんま1/2 · 4K</div>
+</div>
 <script>
 var wallpapers = ${wallpapersJson};
 var chosen = wallpapers[Math.floor(Math.random() * wallpapers.length)];
@@ -161,10 +297,27 @@ if (titleElem) {
   titleElem.textContent = isOfficial ? 'らんま1/2 (2024) 官方主视觉' : 'らんま1/2 · 4K 原画精选';
 }
 
+function toggleCollapse(){
+  var card = document.getElementById('mainCard');
+  var btnText = document.getElementById('toggleText');
+  var isCollapsed = card.classList.toggle('collapsed');
+  btnText.textContent = isCollapsed ? '展开信息' : '只看乱马';
+  try {
+    localStorage.setItem('dlb_start_collapsed', isCollapsed ? '1' : '0');
+  } catch(e){}
+}
+
+try {
+  if (localStorage.getItem('dlb_start_collapsed') === '1') {
+    document.getElementById('mainCard').classList.add('collapsed');
+    document.getElementById('toggleText').textContent = '展开信息';
+  }
+} catch(e){}
+
 function pad(n){return String(n).padStart(2,'0')}
 function tick(){
   var d = new Date();
-  document.getElementById('clock').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+  document.getElementById('clock').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+' '+pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();
 }
 var clockTimer;
 function updateClockActivity(){

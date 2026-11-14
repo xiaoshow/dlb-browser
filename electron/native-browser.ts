@@ -202,7 +202,7 @@ function buildChromeSharedNodes(items: SharedBookmarkNode[], nowChrome: string, 
   })
 }
 
-async function ensureProfileBadgeExtension(directory: string, number: number, profile: any, proxy?: any, themeHex?: string) {
+async function ensureProfileBadgeExtension(directory: string, number: number, profile: any, proxy?: any, themeHex?: string, homepageUrl?: string) {
   const extDir = join(directory, 'prism-badge-extension')
   await mkdir(extDir, { recursive: true, mode: 0o700 })
   const tags = [...new Set((profile.alias || profile.notes || '').split(/[,，]/).map((t: string) => t.trim()).filter(Boolean))]
@@ -230,12 +230,13 @@ async function ensureProfileBadgeExtension(directory: string, number: number, pr
 
   const dividerTitle = buildDividerTitle(number, profile)
   const profileLabelTitle = buildProfileLabelTitle(number, profile)
+  const targetHomeUrl = homepageUrl || 'chrome://newtab/'
   const bg = `
 const BADGE_TEXT = '#${number}';
 const BADGE_COLOR = '${color}';
 const BADGE_TITLE = ${JSON.stringify(badgeTitle)};
 const PROFILE_LABEL_TITLE = ${JSON.stringify(profileLabelTitle)};
-const PROFILE_LABEL_URL = 'chrome://newtab/';
+const PROFILE_LABEL_URL = ${JSON.stringify(targetHomeUrl)};
 const DIVIDER_TITLE = ${JSON.stringify(dividerTitle)};
 const DIVIDER_URL = 'chrome://bookmarks/';
 let __prismSyncing = false;
@@ -243,7 +244,7 @@ let __prismSyncing = false;
 function isProfileLabel(c) {
   if (!c) return false;
   const t = String(c.title || '');
-  return c.url === 'chrome://newtab/' || c.url === 'chrome://version/' || t.endsWith(' ｜') || t.endsWith(' |');
+  return c.url === PROFILE_LABEL_URL || c.url === 'chrome://newtab/' || c.url === 'chrome://version/' || String(c.url || '').includes('prism-start.html') || t.endsWith(' ｜') || t.endsWith(' |');
 }
 
 function isDivider(c) {
@@ -766,7 +767,7 @@ async function ensureProfilePreferences(directory: string, profile: any, number:
     id: '90098',
     name: buildProfileLabelTitle(number, profile),
     type: 'url',
-    url: 'chrome://newtab/',
+    url: homepageUrl || 'chrome://newtab/',
   }
 
   const dividerGuid = '00000000-0000-4000-8000-000000000099'
@@ -1082,7 +1083,7 @@ export class NativeBrowsers {
     }
     if (profile.webRTCPolicy === 'proxy-only') args.push('--force-webrtc-ip-handling-policy=disable_non_proxied_udp')
     const theme = PROFILE_PALETTE[number % PROFILE_PALETTE.length]
-    const extDir = await ensureProfileBadgeExtension(directory, number, profile, proxy, theme.hex)
+    const extDir = await ensureProfileBadgeExtension(directory, number, profile, proxy, theme.hex, homepageUrl)
     const extPaths = [extDir]
     if (await access(join(BROWSER_SKILL_EXTENSION_DIR, 'manifest.json')).then(() => true).catch(() => false)) {
       extPaths.push(BROWSER_SKILL_EXTENSION_DIR)
@@ -1571,6 +1572,7 @@ export class NativeBrowsers {
             }
           }
           const prof = profileById.get(pid)
+          const pidHomeUrl = pathToFileURL(join(profilesRoot, pid, 'prism-start.html')).href
           const profileLabelNode = {
             date_added: nowChrome,
             date_last_used: '0',
@@ -1578,7 +1580,7 @@ export class NativeBrowsers {
             id: '90098',
             name: buildProfileLabelTitle(prof?.sequenceNumber || prof?.number, prof),
             type: 'url',
-            url: 'chrome://newtab/',
+            url: pidHomeUrl,
           }
           const dividerNode = {
             date_added: nowChrome,
